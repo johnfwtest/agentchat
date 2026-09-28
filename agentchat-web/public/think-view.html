@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>think</title>
+<style>
+  body { margin: 0; background: #fafafa; color: #444;
+         font: 13px/1.7 ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace; }
+  #banner { position: fixed; top: 0; left: 0; right: 0; padding: 8px 16px;
+            font: 12px/1.6 system-ui, sans-serif; color: #8c6d1f; background: #fdf6e3;
+            border-bottom: 1px solid #f0e0b0; z-index: 9; }
+  #banner:empty { display: none; }
+  pre { margin: 0; padding: 52px 16px 20px;
+        white-space: pre-wrap; word-break: break-word; }
+  #meta { position: fixed; top: 8px; right: 12px; font-size: 11px; color: #999; z-index: 9; }
+  .err { padding: 80px 20px; text-align: center; color: #999;
+         font: 14px system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="banner"></div>
+<div id="meta"></div>
+<pre id="t"></pre>
+<script>
+  // think 消息查看器，两种模式：
+  // 1) ?id=GUID（分享/回看）：fetch /api/think/{guid} 拉快照。**页面不会自动刷新**，
+  //    是打开时刻的快照；内容在服务端保留 N 分钟（管理页 think_keep_minutes），
+  //    过期/清除后 404。iframe 内嵌模式（无 id）走 postMessage 实时流，不适用此页提示。
+  // 2) sessionStorage 引导（旧兜底）：无 id 时读 sessionStorage 快照。
+  // 只用 textContent 渲染（不可信输入，纯文本处理）。
+  var el = document.getElementById('t'),
+      banner = document.getElementById('banner'),
+      meta = document.getElementById('meta');
+  var n = 0;
+  function render(text) {
+    el.textContent = text || '(empty)';
+    window.scrollTo(0, document.body.scrollHeight);
+    meta.textContent = (++n) + ' updates';
+  }
+  function showBanner(html) { banner.innerHTML = html; }
+  window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'think') render(e.data.text);
+  });
+  var qs = new URLSearchParams(location.search);
+  var guid = qs.get('id');
+  if (guid) {
+    document.title = 'think · ' + guid.slice(0, 8);
+    var token = '';
+    try { token = localStorage.getItem('agentchat_token') || ''; } catch (e) {}
+    if (!token) {
+      el.style.display = 'none';
+      document.body.insertAdjacentHTML('beforeend',
+        '<div class="err">请先登录 AgentChat（打开聊天页登录后，再回来刷新本页）</div>');
+    } else {
+      showBanner('本页是打开时刻的<b>快照，不会自动刷新</b>；内容在服务端保留一段时间后过期（过期后 404）。');
+      fetch('/api/think/' + encodeURIComponent(guid), {
+        headers: { 'Authorization': 'Bearer ' + token }
+      }).then(function (r) {
+        if (r.status === 404) throw new Error('gone');
+        if (r.status === 401) throw new Error('auth');
+        return r.json();
+      }).then(function (d) {
+        document.title = 'think · ' + d.sender;
+        showBanner('本页是打开时刻的<b>快照，不会自动刷新</b>；'
+          + (d.done ? '思考已完成，内容在保留期内可回看' : '思考可能仍在进行，刷新页面可获取更新')
+          + '（过期后 404）。');
+        render(d.text);
+      }).catch(function (e) {
+        el.style.display = 'none';
+        document.body.insertAdjacentHTML('beforeend',
+          e.message === 'gone' ? '<div class="err">思考内容不存在或已过期（保留期结束/被清除）</div>'
+                               : '<div class="err">登录已过期，请刷新聊天页后重试</div>');
+      });
+    }
+  } else if (window.parent !== window) {
+    // iframe 模式：就绪握手，等待父页 postMessage 实时推送
+    parent.postMessage({ type: 'think-view-ready' }, '/');
+  } else {
+    try {   // 旧兜底：sessionStorage 快照（无 GUID，理论上已不触发）
+      var snap = sessionStorage.getItem('agentchat-think');
+      if (snap) { var d = JSON.parse(snap); document.title = 'think · ' + d.sender;
+                  showBanner('本页是快照，不会自动刷新。'); render(d.text); }
+    } catch (err) { /* 忽略 */ }
+  }
+</script>
+</body>
+</html>

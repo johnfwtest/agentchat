@@ -1,0 +1,29 @@
+# 网盘统一接入层 —— 网盘真实地址只在这里以环境变量出现（docker-compose: NETDISK_UPSTREAM）。
+# 本文件是 nginx 官方镜像的 envsubst 模板：启动时 ${VAR} 被替换生成
+# /etc/nginx/conf.d/default.conf。存储迁移只改 compose 里的 NETDISK_UPSTREAM，
+# 然后 `docker compose up -d files`，后端与前端都不用动。
+# ${NGINX_MAX_BODY}/${NGINX_TIMEOUT} 同为 compose 参数（默认 51200m / 3600s）。
+upstream netdisk {
+    server ${NETDISK_UPSTREAM};
+}
+
+server {
+    listen 80;
+    # 传输硬上限（后端上传转发经此容器，实际大小由后端 upload_max_mb 动态限制）
+    client_max_body_size ${NGINX_MAX_BODY};
+
+    # 附件读取：/files/{date}/{name} → 网盘 /d/{NETDISK_D_PREFIX}/{date}/{name}
+    # NETDISK_D_PREFIX 即网盘 /d/ 下的一级目录（compose 中与 agentchat-server NETDISK_ROOT 同源，默认 im）
+    location /files/ {
+        proxy_pass http://netdisk/d/${NETDISK_D_PREFIX}/;
+        proxy_read_timeout ${NGINX_TIMEOUT};
+        proxy_send_timeout ${NGINX_TIMEOUT};
+    }
+
+    # 上传/建目录：后端 NETDISK_BASE_URL 指向本容器，/api/* 原样转发到网盘
+    location /api/ {
+        proxy_pass http://netdisk/api/;
+        proxy_read_timeout ${NGINX_TIMEOUT};
+        proxy_send_timeout ${NGINX_TIMEOUT};
+    }
+}

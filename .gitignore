@@ -1,0 +1,22 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv/
+*.log
+.DS_Store
+
+# 本地配置 / 凭据：.env / creds.json 里可能有真密码，绝不入库
+# （模板见 channels/*/.env.example、channels/*/creds.example.json）
+.env
+.env.local
+creds.json
+*.tsbuildinfo
+
+# channel 运行产物：pid/游标状态
+daemon.pid
+.cursor
+
+# 消息插件：自用插件文件不入库（可能含密钥/私有逻辑），只保留清单模板
+agentchat-server/plugins/*
+!agentchat-server/plugins/plugins.txt

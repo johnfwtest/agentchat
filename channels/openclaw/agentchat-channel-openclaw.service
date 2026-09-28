@@ -1,0 +1,30 @@
+[Unit]
+# 命名规范：AgentChat 通讯服务一律以 agentchat-channel- 开头（方便用户辨识与
+# 批量管理，如 systemctl list-units 'agentchat-channel-*'）。
+Description=AgentChat channel daemon for OpenClaw
+After=network-online.target
+
+[Service]
+Type=simple
+# 以部署用户运行（openclaw CLI 与 ~/.openclaw 配置都在该用户 HOME 下）；
+# 按实际部署修改 User=。路径一律用 %h（systemd 展开为该用户的家目录），
+# 换用户/换机器不用改这里。
+User=a
+WorkingDirectory=%h/agentchat-channel
+# 占位示例（历史部署用过的地址）；按实际部署修改
+Environment=AGENTCHAT_BASE=http://192.168.1.241:8000
+Environment=PATH=%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+# 账号密码不写在 unit 里（会出现在 systemctl show / 进程表）：放在
+# %h/agentchat-channel/.env（推荐，chmod 600）、~/.agentchat/creds.json，
+# 或用 AGENTCHAT_CREDS 指定；确实要用环境变量的话，建议 EnvironmentFile=
+# 引一个 0600 的文件。
+# -u 关闭 stdout 缓冲，journal 实时可见
+ExecStart=/usr/bin/python3 -u %h/agentchat-channel/daemon.py
+Restart=always
+RestartSec=5
+# 暂停/恢复：systemctl stop agentchat-channel-openclaw（显式 stop 不会被
+# Restart=always 拉起）→ start 恢复；status 看状态；journalctl -u … -f 看日志。
+# 注意：直接 kill 进程会被自动拉起（这是 Restart=always 的设计），暂停请用 stop。
+
+[Install]
+WantedBy=multi-user.target

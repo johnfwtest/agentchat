@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport-fit=cover:让页面铺到 iPad 横屏的 Home Indicator 区域,
+         配合 CSS env(safe-area-inset-*) 给底部留出安全区 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Safari toolbar 颜色联动 UI 配色 -->
+    <meta name="theme-color" content="#f5f6f8" />
+    <title>AgentChat</title>
+    <style>
+      /* 100dvh:iPadOS 15.4+ Safari 拿"动态视口高度"——避开 URL 栏跳动。
+         旧设备 / Notoaded 浏览器自动回退到 100vh。
+         Home Indicator 安全区:用 env(safe-area-inset-bottom) 留出底部空间,
+         聊天 Composer / 跳转按钮不会被 Home Indicator 遮挡 */
+      html, body, #root { height: 100vh; height: 100dvh; margin: 0; background: #f5f6f8; }
+      body { padding-bottom: env(safe-area-inset-bottom); }
+    </style>
+    <!-- 兼容性垫片:必须在主模块加载之前执行(同步 script)
+         iOS 13.6 Safari 不支持以下标准 API,Antd 5 / react-markdown 9 / @babel/runtime
+         依赖它们,不补则页面进入聊天后渲染第一条带格式消息时崩(白屏)。
+         - Object.hasOwn(obj, key)  (iOS 15.4+ 才原生支持)
+         - structuredClone(value)  (iOS 15.4+ 才原生支持;目前只在兼容路径用到)
+         - String.replaceAll  (iOS 15.4+)
+         这段是内联最小垫片,不引第三方依赖,build 体积零增长。
+         现代浏览器走原生(无副作用),旧浏览器自动 fallback 到 ES5 polyfill。 -->
+    <script>
+      (function() {
+        try {
+          if (typeof Object.hasOwn !== 'function') {
+            Object.hasOwn = function(o, k) {
+              return Object.prototype.hasOwnProperty.call(o, k);
+            };
+          }
+          if (typeof String.prototype.replaceAll !== 'function') {
+            String.prototype.replaceAll = function(search, replacement) {
+              // 仅支持字符串 search(string literal) 路径,够用
+              if (search instanceof RegExp) return this.replace(search, replacement);
+              return this.split(search).join(replacement);
+            };
+          }
+          if (typeof structuredClone !== 'function') {
+            // 浅拷贝 fallback:多数用法(嵌套对象)递归展开;Antd / rc-field-form
+            // 实际传过来的都是可 JSON 序列化对象,JSON 法足够覆盖兼容路径
+            window.structuredClone = function(v) {
+              try { return JSON.parse(JSON.stringify(v)); }
+              catch (e) { return v; }
+            };
+          }
+        } catch (e) { /* polyfill 失败也不阻塞主加载 */ }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

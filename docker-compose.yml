@@ -1,0 +1,127 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # 事件流游标（ac:user:*:evseq/events）住在这里：容器被 recreate / 宿主重启会丢，
+    # 一丢客户端游标就整体失效（表现为守护静默卡死）。AOF + 卷让它在 recreate 后仍在。
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+
+  # 网盘统一接入层：/files/* → 网盘 /d/*（附件读取），/api/* → 网盘 /api/*（上传）
+  # 网盘真实地址只在这里配置（NETDISK_UPSTREAM）；存储迁移改此值或同目录 .env 后 up -d files
+  # NGINX_MAX_BODY/NGINX_TIMEOUT：传输硬上限与代理超时（大附件场景，可 .env 覆盖）
+  files:
+    image: nginx:alpine
+    restart: unless-stopped
+    environment:
+      NETDISK_UPSTREAM: ${NETDISK_UPSTREAM:-netdisk:8090}
+      # netdisk 是网盘的容器
+      # /files/ → 网盘 /d/{NETDISK_D_PREFIX}/，与 agentchat-server NETDISK_ROOT 同源（默认 im）
+      NETDISK_D_PREFIX: ${NETDISK_ROOT:-im}
+      NGINX_MAX_BODY: ${NGINX_MAX_BODY:-51200m}
+      NGINX_TIMEOUT: ${NGINX_TIMEOUT:-3600s}
+    volumes:
+      - ./files/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+    networks:
+      - default
+      - myhost-net
+
+  agentchat-server:
+    build:
+      context: ./agentchat-server
+      args:
+        # pip 镜像（内网/加速）：在 .env 里设 PIP_INDEX_URL 覆盖，如清华源
+        #   PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+        # 纯 HTTP 内网源须同时设 PIP_TRUSTED_HOST（pip 会忽略不信任的 http 源）：
+        #   PIP_INDEX_URL=http://192.168.1.10:8081/simple
+        #   PIP_TRUSTED_HOST=192.168.1.10:8081
+        # 注：跨宿主机的内网源用宿主 IP 形式；同宿主机容器名形式需 buildx 自定义
+        # builder 绑定网络，暂不支持（见 DESIGN.md 10.3）
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+    container_name: agentchat-server
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: agentchat
+      JWT_SECRET: change-me-agentchat-secret
+      NETDISK_BASE_URL: http://files:80   # 上传/建目录经 files 容器转发到网盘
+      NETDISK_FILE_PREFIX: /files         # 消息内附件一律存此相对路径前缀
+      NETDISK_ROOT: im
+      NETDISK_TIMEOUT: ${NETDISK_TIMEOUT:-3600}   # 底层存储上传超时（秒）
+      ADMIN_USER: admin
+      ADMIN_PASSWORD: admin123
+      # 消息插件管道：plugins/ 目录 + plugins.txt 清单（唯一启用源）；
+      # 无清单 = 空管道 = 原样直通。加/停插件只动目录与清单，改完 restart 生效
+      PLUGINS_DIR: /app/plugins
+      # ---- 附件存储后端（app/storage.py 适配器）：netdisk（默认）| rustfs ----
+      # 用 RustFS（S3 兼容对象存储）时在 .env 覆盖：
+      #   STORAGE_BACKEND=rustfs
+      #   RUSTFS_ENDPOINT=http://rustfs:9000   #（并自行部署 rustfs 服务/容器）
+      #   RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY / RUSTFS_BUCKET / RUSTFS_PREFIX=im
+      #   FILES_READ_UPSTREAM=http://agentchat-server:8000  # web /files/ 改走后端代理
+      # files 容器仅网盘部署需要，RustFS 部署可去掉（web 直读不再经它）
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-netdisk}
+      RUSTFS_ENDPOINT: ${RUSTFS_ENDPOINT:-http://localhost:9000}
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-}
+      RUSTFS_BUCKET: ${RUSTFS_BUCKET:-agentchat}
+      RUSTFS_PREFIX: ${RUSTFS_PREFIX:-im}
+    volumes:
+      - ./agentchat-server/plugins:/app/plugins
+    ports:
+      # 直连后端，仅供调试/本机脚本用；对外暴露一个端口就够：
+      # /api、/ws、/mcp 都由 agentchat-web(nginx) 同源反代，AGENTCHAT_BASE 写前端地址即可。
+      # 要只保留前端一个端口，把这行注掉（或改用 compose override）。
+      - "9000:8000"
+    networks:
+      - default
+      - myhost-net
+    depends_on:
+      - redis
+      - mongo
+      - files
+
+  agentchat-web:
+    build:
+      context: ./agentchat-web
+      args:
+        # npm 镜像（内网/加速）：.env 覆盖，默认 npmmirror
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    container_name: agentchat-web
+    restart: unless-stopped
+    environment:
+      NGINX_MAX_BODY: ${NGINX_MAX_BODY:-51200m}   # 与 files 容器共用同一组 nginx 参数
+      NGINX_TIMEOUT: ${NGINX_TIMEOUT:-3600s}
+      # /files/ 读取上游：网盘部署=files 反代容器；RustFS=后端（预签名 S3 代理）
+      FILES_READ_UPSTREAM: ${FILES_READ_UPSTREAM:-http://files:80}
+    ports:
+      - "9080:80"         # 浏览器入口（nginx 托管静态 + 反代 /api /ws）；80 被 matrix-caddy 占用
+    networks:
+      - default
+      - myhost-net
+    depends_on:
+      - agentchat-server
+
+volumes:
+  redis_data:
+    driver: local
+  # mongo 数据默认用 named volume（clone 后直接 up 即可跑）。
+  # 想固定落盘目录的话改回 bind mount（注意先创建目录并处理权限）：
+  #   mongo_data:
+  #     driver: local
+  #     driver_opts: { type: none, o: bind, device: /your/path/agentchat/mongodb }
+  mongo_data:
+    driver: local
+
+networks:
+  myhost-net:
+    external: true

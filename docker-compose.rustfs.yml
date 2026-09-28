@@ -1,0 +1,107 @@
+# RustFS 版部署编排：附件后端用 RustFS（S3 兼容对象存储，随本栈一起跑），
+# 不含网盘与 files 反代容器。网盘版部署见 docker-compose.yml（默认），二选一。
+#
+# 用法：docker compose -f docker-compose.rustfs.yml up -d --build
+# 可用同目录 .env 覆盖（不配也有可用默认值）：
+#   RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY / RUSTFS_BUCKET / RUSTFS_PREFIX
+# 注意：S3 单次 PUT 上限 5GB（未做 multipart），超大附件场景请用网盘版。
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # 事件流游标住在这里：AOF + 卷保证容器 recreate 后仍在（/sync 客户端不自愈会静默卡死）
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+
+  # S3 兼容对象存储（附件落这里）。9000 = S3 API；控制台需显式开启，
+  # 监听 9001（宿主映射 9300，浏览器打开 http://<host>:9300 用同一组账号登录）
+  rustfs:
+    image: rustfs/rustfs
+    restart: unless-stopped
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-agentchat}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-agentchat-secret}
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    volumes:
+      - rustfs_data:/data
+    ports:
+      - "9300:9001"
+
+  agentchat-server:
+    build:
+      context: ./agentchat-server
+      args:
+        # pip 镜像（内网/加速）：在 .env 里设 PIP_INDEX_URL 覆盖，如清华源
+        #   PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+        # 纯 HTTP 内网源须同时设 PIP_TRUSTED_HOST（pip 会忽略不信任的 http 源）：
+        #   PIP_INDEX_URL=http://192.168.1.10:8081/simple
+        #   PIP_TRUSTED_HOST=192.168.1.10:8081
+        # 注：跨宿主机的内网源用宿主 IP 形式；同宿主机容器名形式需 buildx 自定义
+        # builder 绑定网络，暂不支持（见 DESIGN.md 10.3）
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+    container_name: agentchat-server
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: agentchat
+      JWT_SECRET: change-me-agentchat-secret
+      # ---- 附件存储：RustFS 适配器（app/storage.py，SigV4 预签名上传/读取）----
+      STORAGE_BACKEND: rustfs
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-agentchat}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-agentchat-secret}
+      RUSTFS_BUCKET: ${RUSTFS_BUCKET:-agentchat}          # 桶不存在自动创建
+      RUSTFS_PREFIX: ${RUSTFS_PREFIX:-im}                 # 对象 key 前缀（同网盘版的 NETDISK_ROOT）
+      NETDISK_FILE_PREFIX: /files                         # 消息内附件一律存此相对路径前缀（两版一致）
+      NETDISK_TIMEOUT: ${NETDISK_TIMEOUT:-3600}           # 后端→存储上传超时（秒）
+      ADMIN_USER: admin
+      ADMIN_PASSWORD: admin123
+      # 消息插件管道：plugins/ 目录 + plugins.txt 清单（唯一启用源）；
+      # 无清单 = 空管道 = 原样直通。加/停插件只动目录与清单，改完 restart 生效
+      PLUGINS_DIR: /app/plugins
+    volumes:
+      - ./agentchat-server/plugins:/app/plugins
+    ports:
+      # 直连后端，仅供调试/本机脚本用；对外暴露一个端口就够（/api、/ws、/mcp 由 web 同源反代）
+      - "9000:8000"
+    depends_on:
+      - redis
+      - mongo
+      - rustfs
+
+  agentchat-web:
+    build:
+      context: ./agentchat-web
+      args:
+        # npm 镜像（内网/加速）：.env 覆盖，默认 npmmirror
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    container_name: agentchat-web
+    restart: unless-stopped
+    environment:
+      NGINX_MAX_BODY: ${NGINX_MAX_BODY:-51200m}
+      NGINX_TIMEOUT: ${NGINX_TIMEOUT:-3600s}
+      # /files/ 读取走后端（预签名 GET 代理 RustFS，Range 透传）——本版没有 files 容器
+      FILES_READ_UPSTREAM: http://agentchat-server:8000
+    ports:
+      - "9080:80"         # 浏览器入口
+    depends_on:
+      - agentchat-server
+
+volumes:
+  redis_data:
+    driver: local
+  mongo_data:
+    driver: local
+  rustfs_data:
+    driver: local

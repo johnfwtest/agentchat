@@ -1,0 +1,12 @@
+{
+  "_comment": "示例值；base / url 请替换为你的 AgentChat 服务地址（局域网或公网域名均可）",
+  "servers": {
+    "agentchat": {
+      "type": "http",
+      "url": "http://192.168.1.241:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer <换成 POST /api/auth/login 拿到的 token>"
+      }
+    }
+  }
+}

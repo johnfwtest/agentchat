@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+motor
+redis
+PyJWT
+psutil
+httpx
+python-multipart
+mcp
