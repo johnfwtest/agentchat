@@ -4,17 +4,18 @@ import { PictureOutlined, PaperClipOutlined, SendOutlined,
          CloseOutlined, TeamOutlined, SmileOutlined, HistoryOutlined } from '@ant-design/icons'
 import { sendMessage, uploadFile } from '../api'
 import { useStore } from '../store'
+import { t, useLang } from '../i18n'
 import { useIsMobile } from '../responsive'
 import { safeStorage } from '../safeStorage'
 
 const EMOJI_GROUPS: { title: string; emojis: string[] }[] = [
-  { title: '表情', emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂',
+  { title: t('emoji.tab1'), emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂',
                             '🙂', '😉', '😊', '😍', '😘', '😜', '🤔', '😏',
                             '😴', '😭', '😤', '😡', '🥺', '😱', '🤯', '🤗'] },
-  { title: '手势与状态', emojis: ['👍', '👎', '👌', '✌️', '🙏', '💪', '🫡',
+  { title: t('emoji.tab2'), emojis: ['👍', '👎', '👌', '✌️', '🙏', '💪', '🫡',
                                   '✅', '❌', '⏳', '⏰', '🔥', '💡', '⚠️',
                                   '❗', '❓', '💤', '🚀', '🐛', '📝'] },
-  { title: '庆祝与物品', emojis: ['🎉', '🎊', '👏', '🎁', '🏆', '🥳', '☕',
+  { title: t('emoji.tab3'), emojis: ['🎉', '🎊', '👏', '🎁', '🏆', '🥳', '☕',
                                   '🍕', '🍻', '📎', '📌', '🔗', '📊', '🛠️'] },
 ]
 
@@ -47,6 +48,7 @@ export default function Composer() {
   const fileInput = useRef<HTMLInputElement>(null)
 
   const isMobile = useIsMobile()
+  useLang()
   const conv = convs.find(c => c.id === activeConvId)
   if (!activeConvId || !conv) return null
 
@@ -66,16 +68,16 @@ export default function Composer() {
     setUploading(true)
     setUploadError(null)
     setProg({ name: file.name, pct: 0 })
-    const placeholder = `[上传中: ${file.name}]`
+    const placeholder = t('composer.uploadingFile').replace('{name}', file.name)
     insertAtCursor(placeholder)
     try {
       const r = await uploadFile(file, type,
         pct => setProg(p => (p ? { ...p, pct } : p)))
       setText(prev => prev.replace(placeholder, r.markdown))
-      message.success(`已上传: ${r.filename}`)
+      message.success(t('composer.uploadedFile').replace('{name}', r.filename))
     } catch (e: any) {
       setText(prev => prev.replace(placeholder, ''))   // 失败不留在草稿里，由红字提示
-      setUploadError(`${file.name}：${e.message || '上传失败'}`)
+      setUploadError(t('composer.uploadFailedFile').replace('{name}', file.name).replace('{reason}', e.message || t('chat.uploadFailed')))
     } finally {
       setUploading(false)
       setProg(null)
@@ -92,7 +94,7 @@ export default function Composer() {
       setReplyTo(null)
       await loadConvs()
     } catch (e: any) {
-      message.error(e.message || '发送失败')
+      message.error(e.message || t('composer.sendFailed'))
     } finally {
       setSending(false)
     }
@@ -102,7 +104,7 @@ export default function Composer() {
     items: [
       ...conv.members.filter(u => u !== me?.username)
         .map(u => ({ key: u, label: `@${u}` })),
-      { key: 'all', label: '@所有人' },
+      { key: 'all', label: t('composer.everyone') },
     ],
     onClick: ({ key }: { key: string }) => insertAtCursor(`@${key} `),
   }
@@ -147,7 +149,7 @@ export default function Composer() {
         onDoubleClick={resetH}
         onPointerEnter={() => setHoverHandle(true)}
         onPointerLeave={() => setHoverHandle(false)}
-        title="拖动调整输入区高度（双击恢复默认）"
+        title={t('composer.dragResize')}
         style={{ height: 8, margin: '-8px -12px 0', cursor: 'ns-resize',
                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                  touchAction: 'none' }}>
@@ -163,7 +165,7 @@ export default function Composer() {
                               if (!f) return
                               if ((f.type.startsWith('video/') || f.type.startsWith('audio/')) &&
                                   !/\.(mp4|webm|ogg|mp3|wav|m4a|flac)$/i.test(f.name)) {
-                                message.error('媒体仅支持浏览器可直接播放的格式：mp4 / webm / ogg / mp3 / wav / m4a / flac')
+                                message.error(t('composer.mediaOnly'))
                                 e.target.value = ''
                                 return
                               }
@@ -175,7 +177,7 @@ export default function Composer() {
       {prog && (
         <div style={{ marginBottom: 6 }}>
           <Progress percent={prog.pct} size="small" status="active"
-                    format={p => `上传中 ${p}%`} />
+                    format={p => t('composer.uploadPct').replace('{p}', String(p))} />
           <div style={{ fontSize: 12, color: '#888', marginTop: -2,
                         overflow: 'hidden', whiteSpace: 'nowrap',
                         textOverflow: 'ellipsis' }}>
@@ -186,7 +188,7 @@ export default function Composer() {
       {uploadError && (
         <Alert type="error" closable onClose={() => setUploadError(null)}
                style={{ marginBottom: 6 }} showIcon
-               message={`上传失败：${uploadError}`} />
+               message={t('composer.uploadFailedLabel').replace('{msg}', uploadError)} />
       )}
 
       {replyTo && (
@@ -196,7 +198,7 @@ export default function Composer() {
           <span style={{ borderLeft: '2px solid #bbb', paddingLeft: 6, flex: 1,
                          overflow: 'hidden', whiteSpace: 'nowrap',
                          textOverflow: 'ellipsis' }}>
-            回复 <b>{replyTo.sender}</b>：{replyTo.content.slice(0, 60)}
+            {t('chat.replying')} <b>{replyTo.sender}</b>：{replyTo.content.slice(0, 60)}
           </span>
           <Button type="text" size="small" icon={<CloseOutlined />}
                   onClick={() => setReplyTo(null)} />
@@ -208,19 +210,19 @@ export default function Composer() {
                     flexWrap: 'wrap', alignItems: 'center' }}>
         <Button size="small" type="text" icon={<PictureOutlined />} disabled={uploading}
                 onClick={() => imgInput.current?.click()}
-                title="上传图片/视频/音频（以 Markdown 嵌入插入光标处）">
-          {isMobile ? '' : '图片'}</Button>
+                title={t('composer.imageTitle')}>
+          {isMobile ? '' : t('composer.image')}</Button>
         <Button size="small" type="text" icon={<PaperClipOutlined />} disabled={uploading}
                 onClick={() => fileInput.current?.click()}
-                title="上传附件（以链接插入光标处）">
-          {isMobile ? '' : '附件'}</Button>
+                title={t('composer.fileTitle')}>
+          {isMobile ? '' : t('composer.file')}</Button>
         <Dropdown menu={memberMenu}>
-          <Button size="small" type="text" title="提及成员">@</Button>
+          <Button size="small" type="text" title={t('composer.mention')}>@</Button>
         </Dropdown>
         <EmojiPicker onPick={insertAtCursor} small={isMobile} />
-        <Button size="small" type="text" icon={<HistoryOutlined />} title="查询历史消息"
+        <Button size="small" type="text" icon={<HistoryOutlined />} title={t('composer.historyTitle')}
                 onClick={() => { location.hash = '#/history' }}>
-          {isMobile ? '' : '历史'}</Button>
+          {isMobile ? '' : t('composer.history')}</Button>
         {uploading && <Spin size="small" style={{ marginLeft: 6 }} />}
       </div>
 
@@ -236,13 +238,13 @@ export default function Composer() {
               send()
             }
           }}
-          placeholder="输入 Markdown 消息…（Enter 发送，Shift+Enter 换行）"
+          placeholder={t('composer.placeholder')}
           autoSize={h ? false : { minRows: 2, maxRows: 8 }}
           style={h ? { flex: 1, height: '100%', resize: 'none' } : { flex: 1 }}
         />
         <Button type="primary" icon={<SendOutlined />} loading={sending}
                 onClick={send} disabled={!text.trim()}>
-          发送
+          {t('composer.send')}
         </Button>
       </div>
     </div>
@@ -274,8 +276,8 @@ function EmojiPicker({ onPick, small }: { onPick: (emoji: string) => void; small
   return (
     <Popover content={panel} trigger="click" open={open}
              onOpenChange={setOpen} placement="topLeft">
-      <Button size="small" type="text" icon={<SmileOutlined />} title="插入表情">
-        {small ? '' : '表情'}</Button>
+      <Button size="small" type="text" icon={<SmileOutlined />} title={t('composer.emojiTitle')}>
+        {small ? '' : t('composer.emoji')}</Button>
     </Popover>
   )
 }

@@ -1,53 +1,18 @@
 # nginx 官方镜像 envsubst 模板：${NGINX_MAX_BODY}/${NGINX_TIMEOUT} 由 docker-compose
 # 环境变量注入（默认 51200m / 3600s，可用 .env 覆盖），应对大附件上传。
+# 80/443 共用 server body（common-server.conf.template 同目录生成到 conf.d/）。
+
 server {
     listen 80;
-    root /usr/share/nginx/html;
-    # 传输硬上限；附件实际大小限制由后端按管理页 upload_max_mb 动态执行（返回明确错误）
-    client_max_body_size ${NGINX_MAX_BODY};
+    include /etc/nginx/snippets/common-server.conf;
+}
 
-    # 入口不缓存（其中引用带 hash 的资产文件名，发布后浏览器立即拿到新版本）；
-    # 带 hash 的资产可永久缓存
-    location = /index.html {
-        add_header Cache-Control "no-cache";
-    }
-    location /assets/ {
-        add_header Cache-Control "public, max-age=31536000, immutable";
-    }
-
-    location / {
-        index index.html;
-        try_files $uri $uri/ /index.html;
-    }
-
-    location /api/ws {
-        proxy_pass http://agentchat-server:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 300s;
-    }
-
-    # 附件读取：消息内为相对路径 /files/...，与 API 同源可直接加载。
-    # 上游由部署配置决定：网盘部署 = files 反代容器；RustFS 部署 = 后端
-    #（/files/ 由后端按适配器预签名代理 S3，FILES_READ_UPSTREAM 注入）
-    location /files/ {
-        proxy_pass ${FILES_READ_UPSTREAM};
-        proxy_read_timeout ${NGINX_TIMEOUT};
-    }
-
-    # MCP 端点：POST/GET /mcp（streamable HTTP，可能长连接推流）
-    # 有了它，对外就只需要 agentchat-web 这一个端口（/api、/ws、/mcp 全部同源反代）
-    location /mcp {
-        proxy_pass http://agentchat-server:8000;
-        proxy_http_version 1.1;
-        proxy_buffering off;
-        proxy_read_timeout ${NGINX_TIMEOUT};
-    }
-
-    location /api/ {
-        proxy_pass http://agentchat-server:8000;
-        proxy_read_timeout ${NGINX_TIMEOUT};
-        proxy_send_timeout ${NGINX_TIMEOUT};
-    }
+# 443 自签名 HTTPS（对外可经 compose 映射，如 9081:443）。
+# 证书为构建时生成的自签证书（内网用途，浏览器会提示不受信，可手动信任）。
+server {
+    listen 443 ssl;
+    http2 on;
+    ssl_certificate     /etc/nginx/certs/agentchat.pem;
+    ssl_certificate_key /etc/nginx/certs/agentchat-key.pem;
+    include /etc/nginx/snippets/common-server.conf;
 }

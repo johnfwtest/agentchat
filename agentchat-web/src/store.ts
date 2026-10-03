@@ -5,6 +5,7 @@ import {
   login as apiLogin,
 } from './api'
 import { wsConnect, wsDisconnect } from './ws'
+import { getLang, t } from './i18n'
 import { safeStorage } from './safeStorage'
 
 export interface Highlight { convId: string; seq: number }
@@ -101,7 +102,8 @@ export const useStore = create<Store>((set, get) => ({
   setMsgAtBottom: (v) => { if (get().msgAtBottom !== v) set({ msgAtBottom: v }) },
 
   login: async (u, p) => {
-    const r = await apiLogin(u, p)
+    // 登录顺带上报界面语言（服务端记入 Redis，系统消息按发起人语言生成）
+    const r = await apiLogin(u, p, getLang())
     setToken(r.token)
     set({ me: { username: r.username, role: r.role } })
     wsConnect(r.token)
@@ -306,7 +308,7 @@ function notify(m: Msg, isPrivate: boolean, mentioned: boolean) {
   if (!('Notification' in window)) return
   if (Notification.permission === 'default') Notification.requestPermission()
   if (Notification.permission !== 'granted') return
-  const title = mentioned ? `@你 · ${m.sender}` : `${m.sender}`
+  const title = mentioned ? t('notify.mentionTitle').replace('{sender}', m.sender) : `${m.sender}`
   const n = new Notification(title, {
     body: m.content.slice(0, 100),
     tag: m.conv_id,

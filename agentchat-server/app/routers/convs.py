@@ -4,7 +4,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app import messaging, settings
-from app.db import convs_col, msgs_col, users_col
+from app.db import convs_col, msgs_col, redis, users_col
 from app.deps import get_current_user
 from app.messaging import serialize_msg
 from app.schemas import (AddMemberIn, CreateGroupIn, CreatePrivateIn, SendMessageIn,
@@ -12,6 +12,37 @@ from app.schemas import (AddMemberIn, CreateGroupIn, CreatePrivateIn, SendMessag
 
 router = APIRouter(prefix="/api")
 CONV_ID_RE = re.compile(r"^(private:[a-z0-9_-]{2,32}:[a-z0-9_-]{2,32}|[a-f0-9]{24})$")
+
+# 系统消息双语模板：按发起人（操作者）登录时上报的语言生成；无记录默认 en。
+LANG_KEY = "ac:user:{u}:lang"
+SYS_MSGS = {
+    "zh": {
+        "create": "{a} 创建了群聊「{name}」",
+        "invite": "{a} 邀请 {u} 加入群聊",
+        "remove": "{a} 将 {u} 移出了群聊",
+        "leave": "{u} 退出了群聊",
+        "rename": "{a} 将群名修改为「{name}」",
+        "dissolve": "{a} 解散了群聊",
+        "admin_dissolve": "admin 解散了群聊（管理员操作）",
+    },
+    "en": {
+        "create": '{a} created the group "{name}"',
+        "invite": "{a} invited {u} to the group",
+        "remove": "{a} removed {u} from the group",
+        "leave": "{u} left the group",
+        "rename": '{a} renamed the group to "{name}"',
+        "dissolve": "{a} dissolved the group",
+        "admin_dissolve": "admin dissolved the group (admin action)",
+    },
+}
+
+
+async def sys_msg(actor: str, key: str, **kw) -> str:
+    """按发起人语言渲染系统消息模板（Redis 无记录时默认 en）。"""
+    lang = await redis.get(LANG_KEY.format(u=actor))
+    lang = lang.decode() if isinstance(lang, bytes) else lang
+    tpl = SYS_MSGS.get(lang) or SYS_MSGS["en"]
+    return tpl[key].format(a=actor, **kw)
 
 
 def conv_out(conv: dict) -> dict:
@@ -78,7 +109,7 @@ async def create_group(body: CreateGroupIn, user: dict = Depends(get_current_use
         "created_at": now_iso(),
     }
     await convs_col.insert_one(conv)
-    await messaging.send_system(conv, me, f"{me} 创建了群聊「{body.name}」")
+    await messaging.send_system(conv, me, await sys_msg(me, "create", name=body.name))
     fresh = await convs_col.find_one({"_id": conv["_id"]})
     return conv_out(fresh)
 
@@ -107,7 +138,7 @@ async def add_member(conv_id: str, body: AddMemberIn,
         raise HTTPException(400, "已在群内")
     await convs_col.update_one({"_id": conv_id}, {"$addToSet": {"members": target}})
     conv = await get_conv_or_404(conv_id)
-    await messaging.send_system(conv, me, f"{me} 邀请 {target} 加入群聊")
+    await messaging.send_system(conv, me, await sys_msg(me, "invite", u=target))
     return conv_out(await convs_col.find_one({"_id": conv_id}))
 
 
@@ -124,7 +155,7 @@ async def remove_member(conv_id: str, username: str,
         raise HTTPException(404, "该用户不在群内")
     await convs_col.update_one({"_id": conv_id}, {"$pull": {"members": username}})
     conv = await get_conv_or_404(conv_id)
-    await messaging.send_system(conv, me, f"{me} 将 {username} 移出了群聊")
+    await messaging.send_system(conv, me, await sys_msg(me, "remove", u=username))
     return conv_out(await convs_col.find_one({"_id": conv_id}))
 
 
@@ -146,7 +177,7 @@ async def update_group(conv_id: str, body: UpdateGroupIn,
     await convs_col.update_one({"_id": conv_id}, {"$set": update})
     if "name" in update:
         conv = await get_conv_or_404(conv_id)
-        await messaging.send_system(conv, me, f"{me} 将群名修改为「{body.name}」")
+        await messaging.send_system(conv, me, await sys_msg(me, "rename", name=body.name))
     return conv_out(await convs_col.find_one({"_id": conv_id}))
 
 
@@ -162,7 +193,7 @@ async def leave_group(conv_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(404, "不在群内")
     await convs_col.update_one({"_id": conv_id}, {"$pull": {"members": me}})
     conv = await get_conv_or_404(conv_id)
-    await messaging.send_system(conv, me, f"{me} 退出了群聊")
+    await messaging.send_system(conv, me, await sys_msg(me, "leave", u=me))
     return {"ok": True}
 
 
@@ -172,7 +203,7 @@ async def dissolve_group(conv_id: str, user: dict = Depends(get_current_user)):
     conv = await get_conv_or_404(conv_id)
     if conv["type"] != "group" or conv.get("owner") != me:
         raise HTTPException(403, "仅群主可以解散群聊")
-    await messaging.send_system(conv, me, f"{me} 解散了群聊")
+    await messaging.send_system(conv, me, await sys_msg(me, "dissolve"))
     await convs_col.delete_one({"_id": conv_id})
     return {"ok": True}
 

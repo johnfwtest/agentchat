@@ -3,7 +3,9 @@ import { Avatar, Button, Tooltip } from 'antd'
 import { DownOutlined, LikeOutlined } from '@ant-design/icons'
 import { Msg } from '../api'
 import { useStore, scrollState } from '../store'
+import { t as tt, useLang } from '../i18n'
 import { useIsMobile } from '../responsive'
+import { msgTime } from '../time'
 import { convColor } from './ConvList'
 import Markdown from './Markdown'
 import ThinkBubble from './ThinkBubble'
@@ -30,6 +32,7 @@ export default function MessageList() {
   const boxRef = useRef<HTMLDivElement>(null)
   const stickBottom = useRef(true)
   const [showJump, setShowJump] = useState(false)
+  useLang()
 
   // 右下角箭头：跳回最新一条消息（看旧段时 = 直达最后一段）
   const jumpToBottom = () => {
@@ -127,7 +130,7 @@ export default function MessageList() {
   if (!activeConvId) {
     return <div ref={boxRef} style={{ flex: 1, display: 'flex',
       alignItems: 'center', justifyContent: 'center', color: '#999' }}>
-      选择一个会话开始聊天
+      {tt('chat.emptyHint')}
     </div>
   }
 
@@ -136,7 +139,7 @@ export default function MessageList() {
       <div ref={boxRef} onScroll={onScroll}
            style={{ height: '100%', overflowY: 'auto', padding: '12px 16px' }}>
         {more && <div style={{ textAlign: 'center', color: '#999', fontSize: 12,
-                               padding: 4 }}>上拉加载更多…</div>}
+                               padding: 4 }}>{tt('chat.loadMoreUp')}</div>}
         {msgs.map(m => m.type === 'system'
           ? <div key={m.id} style={{ textAlign: 'center', color: '#999',
                                      fontSize: 12, margin: '8px 0' }}>
@@ -152,10 +155,10 @@ export default function MessageList() {
                        onClose={() => clearThink(activeConvId, sender)} />
         ))}
         {moreAfter && <div style={{ textAlign: 'center', color: '#999', fontSize: 12,
-                                    padding: 4 }}>下拉加载更多…</div>}
+                                    padding: 4 }}>{tt('chat.loadMoreDown')}</div>}
       </div>
       {showJump && (
-        <Tooltip title="跳到最新消息" placement="left">
+        <Tooltip title={tt('chat.jumpLatest')} placement="left">
           <Button shape="circle" size="large" icon={<DownOutlined />}
                   onClick={jumpToBottom}
                   style={{ position: 'absolute', right: 16, bottom: 16,
@@ -200,8 +203,8 @@ const MessageRow = memo(function MessageRow({ m, me, highlighted, onReply, onJum
       <div style={{ maxWidth: isMobile ? '86%' : '68%' }}>
         <div style={{ fontSize: 12, color: '#999', marginBottom: 2,
                       textAlign: mine ? 'right' : 'left' }}>
-          {m.sender} · {(m.created_at || '').slice(11, 16)}
-          {!!m.codec && <span title="加密消息"> 🔒</span>}
+          {m.sender} · {msgTime(m.created_at)}
+          {!!m.codec && <span title={tt('msg.encrypted')}> 🔒</span>}
         </div>
         <div style={{
           background: mentionedMe ? '#fff7e6' : (mine ? '#e6f4ff' : '#fff'),
@@ -210,7 +213,7 @@ const MessageRow = memo(function MessageRow({ m, me, highlighted, onReply, onJum
           wordBreak: 'break-word', overflowWrap: 'anywhere',
         }}>
           {m.reply_to && (
-            <div onClick={() => onJumpReply(m)} title="点击定位原消息"
+            <div onClick={() => onJumpReply(m)} title={tt('msg.jumpToOriginal')}
                  style={{ fontSize: 12, color: '#888', borderLeft: '2px solid #bbb',
                           paddingLeft: 6, marginBottom: 6, cursor: 'pointer' }}>
               <b>{m.reply_to.sender}</b>：{m.reply_to.excerpt}
@@ -234,9 +237,9 @@ const MessageRow = memo(function MessageRow({ m, me, highlighted, onReply, onJum
         <div style={{ display: 'flex', gap: 2, marginTop: 2, opacity: 0.15,
                       justifyContent: mine ? 'flex-end' : 'flex-start' }}
              className="msg-actions">
-          <Tooltip title="引用回复">
+          <Tooltip title={tt('msg.replyBtnTitle')}>
             <Button type="text" size="small" onClick={() => onReply(m)}
-                    style={{ fontSize: 12 }}>回复</Button>
+                    style={{ fontSize: 12 }}>{tt('msg.replyBtn')}</Button>
           </Tooltip>
           {QUICK_EMOJIS.map(e => (
             <Button key={e} type="text" size="small" onClick={() => toggle(e)}>

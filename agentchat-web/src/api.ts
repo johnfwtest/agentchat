@@ -42,6 +42,8 @@ export interface UploadResult { url: string; filename: string; markdown: string 
 
 import { safeStorage } from './safeStorage'
 
+import { t } from './i18n'
+
 const TOKEN_KEY = 'agentchat_token'
 
 // 走 safeStorage:兜底 iPad Safari 隐私模式 / 长期未访问站点的
@@ -68,21 +70,21 @@ async function api<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
   if (resp.status === 401 && !path.includes('/auth/login')) {
     clearToken()
     location.hash = '#/login'
-    throw new ApiError(401, '未登录或登录已过期')
+    throw new ApiError(401, t('api.sessionExpired'))
   }
   const text = await resp.text()
   let data: any = null
   try { data = text ? JSON.parse(text) : null } catch { data = text }
   if (!resp.ok) {
-    throw new ApiError(resp.status, data?.detail || `请求失败(${resp.status})`)
+    throw new ApiError(resp.status, data?.detail || t('api.requestFailed').replace('{status}', String(resp.status)))
   }
   return data as T
 }
 
 // ---- auth ----
-export const login = (username: string, password: string) =>
+export const login = (username: string, password: string, lang?: string) =>
   api<{ token: string; username: string; role: string }>('/api/auth/login', {
-    method: 'POST', body: JSON.stringify({ username, password }),
+    method: 'POST', body: JSON.stringify({ username, password, lang }),
   })
 
 // ---- users ----
@@ -185,6 +187,36 @@ export const adminSearchMessages = (p: SearchParams) =>
 export const adminListConvs = () =>
   api<{ conversations: ConvItem[] }>('/api/admin/convs')
 
+// ---- admin：群管理 ----
+export interface AdminGroup {
+  id: string
+  name: string | null
+  desc: string
+  owner: string | null
+  members: string[]
+  member_count: number
+  created_at?: string | null
+  last_msg_at?: string | null
+  last_seq: number
+  msg_count?: number
+}
+export interface AdminGroupParams {
+  q?: string; start?: string; end?: string; member?: string
+  page?: number; limit?: number
+}
+export const adminListGroups = (p: AdminGroupParams) =>
+  api<{ groups: AdminGroup[]; total: number; page: number; limit: number }>(
+    `/api/admin/groups?${buildQs(p)}`)
+export const adminDissolveGroup = (convId: string) =>
+  api(`/api/admin/groups/${convId}/dissolve`, { method: 'POST' })
+export const adminGroupDetail = (convId: string) =>
+  api<ConvItem>(`/api/admin/groups/${convId}`)
+export const adminFetchMessages = (convId: string, params: Record<string, number>) => {
+  const q = new URLSearchParams(
+    Object.entries(params).map(([k, v]) => [k, String(v)]))
+  return api<MessagesPage>(`/api/admin/groups/${convId}/messages?${q}`)
+}
+
 // ---- upload ----
 // fetch 无法观测请求体上传进度，进度条需要 XHR 的 upload.onprogress
 export function uploadFile(file: File, type: 'image' | 'file',
@@ -202,17 +234,17 @@ export function uploadFile(file: File, type: 'image' | 'file',
       if (xhr.status === 401) {
         clearToken()
         location.hash = '#/login'
-        reject(new ApiError(401, '未登录或登录已过期'))
+        reject(new ApiError(401, t('api.sessionExpired')))
         return
       }
       let data: any = null
       try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null } catch { data = null }
       if (xhr.status >= 200 && xhr.status < 300) resolve(data as UploadResult)
       else if (xhr.status === 413)  // 前端 nginx client_max_body_size 100m 先于后端拦截
-        reject(new ApiError(413, '文件过大（超过 100MB 限制）'))
-      else reject(new ApiError(xhr.status, data?.detail || `上传失败(${xhr.status})`))
+        reject(new ApiError(413, t('api.fileTooLarge')))
+      else reject(new ApiError(xhr.status, data?.detail || t('api.uploadFailed').replace('{status}', String(xhr.status))))
     }
-    xhr.onerror = () => reject(new ApiError(0, '网络错误，上传中断'))
+    xhr.onerror = () => reject(new ApiError(0, t('api.networkError')))
     const fd = new FormData()
     fd.append('file', file)
     xhr.send(fd)

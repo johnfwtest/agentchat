@@ -7,6 +7,7 @@ import { ConvItem, addMember, dissolveGroup, fetchUsers, removeMember,
 import { useStore } from '../store'
 import { convColor } from './ConvList'
 import { useIsMobile } from '../responsive'
+import { t as T, useLang } from '../i18n'
 import UserProfileCard from './UserProfileCard'
 
 export default function GroupInfo({ open, conv, onClose }: {
@@ -28,6 +29,7 @@ export default function GroupInfo({ open, conv, onClose }: {
   // hook 必须在下方早退（return null）之前调用：私聊时早退、群聊时不退，
   // hook 写在 JSX 里会导致两次渲染 hook 数不同 → React #310 白屏
   const isMobile = useIsMobile()
+  useLang()
 
   if (!conv || conv.type !== 'group') return null
   const isOwner = conv.owner === me?.username
@@ -46,7 +48,7 @@ export default function GroupInfo({ open, conv, onClose }: {
     if (!addName) return
     try {
       await addMember(conv.id, addName)
-      message.success(`已邀请 ${addName}`)
+      message.success(T('group.invitedOk').replace('{name}', String(addName)))
       setAddOpen(false); setAddName(undefined)
       await loadConvs()
     } catch (e: any) { message.error(e.message) }
@@ -55,7 +57,7 @@ export default function GroupInfo({ open, conv, onClose }: {
   const doRemove = async (username: string) => {
     try {
       await removeMember(conv.id, username)
-      message.success(`已移出 ${username}`)
+      message.success(T('group.removedOk').replace('{name}', String(username)))
       await loadConvs()
     } catch (e: any) { message.error(e.message) }
   }
@@ -64,7 +66,7 @@ export default function GroupInfo({ open, conv, onClose }: {
     if (!newName.trim()) return
     try {
       await renameGroup(conv.id, newName.trim())
-      message.success('已改名')
+      message.success(T('group.renamedOk'))
       setRenaming(false)
       await loadConvs()
     } catch (e: any) { message.error(e.message) }
@@ -73,7 +75,7 @@ export default function GroupInfo({ open, conv, onClose }: {
   const doDesc = async () => {
     try {
       await updateGroup(conv.id, { desc: newDesc.trim() })
-      message.success('描述已更新')
+      message.success(T('group.descUpdated'))
       setDescEditing(false)
       await loadConvs()
     } catch (e: any) { message.error(e.message) }
@@ -82,7 +84,7 @@ export default function GroupInfo({ open, conv, onClose }: {
   const doDissolve = async () => {
     try {
       await dissolveGroup(conv.id)
-      message.success('已解散')
+      message.success(T('group.dissolve'))
       onClose()
       setActive(null)
       await loadConvs()
@@ -90,22 +92,22 @@ export default function GroupInfo({ open, conv, onClose }: {
   }
 
   return (
-    <Drawer title={conv.name || '群聊'} open={open} onClose={onClose}
+    <Drawer title={conv.name || T('conv.group')} open={open} onClose={onClose}
              width={isMobile ? '100%' : 320}>
       {renaming ? (
         <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
           <Input value={newName} onChange={e => setNewName(e.target.value)}
-                 placeholder="新群名" onPressEnter={doRename} autoFocus />
-          <Button type="primary" onClick={doRename}>保存</Button>
-          <Button onClick={() => setRenaming(false)}>取消</Button>
+                 placeholder={T('group.newName')} onPressEnter={doRename} autoFocus />
+          <Button type="primary" onClick={doRename}>{T('common.save')}</Button>
+          <Button onClick={() => setRenaming(false)}>{T('common.cancel')}</Button>
         </Space.Compact>
       ) : (
         <div style={{ marginBottom: 16 }}>
-          群名称：<b>{conv.name}</b>
+          {''}{T('group.name')}：<b>{conv.name}</b>
           {isOwner && (
             <Button type="link" size="small" onClick={() => {
               setNewName(conv.name || ''); setRenaming(true)
-            }}>改名</Button>
+            }}>{T('group.rename')}</Button>
           )}
         </div>
       )}
@@ -113,34 +115,34 @@ export default function GroupInfo({ open, conv, onClose }: {
       {descEditing ? (
         <div style={{ marginBottom: 16 }}>
           <Input.TextArea rows={2} maxLength={200} showCount value={newDesc}
-                          placeholder="群描述（仅群主可改）" autoFocus
+                          placeholder={T('group.descPlaceholder')} autoFocus
                           onChange={e => setNewDesc(e.target.value)} />
           <div style={{ marginTop: 6, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Button size="small" onClick={() => setDescEditing(false)}>取消</Button>
-            <Button size="small" type="primary" onClick={doDesc}>保存</Button>
+            <Button size="small" onClick={() => setDescEditing(false)}>{T('common.cancel')}</Button>
+            <Button size="small" type="primary" onClick={doDesc}>{T('common.save')}</Button>
           </div>
         </div>
       ) : (
         <div style={{ marginBottom: 16, whiteSpace: 'pre-wrap' }}>
-          群描述：<span style={{ color: conv.desc ? '#333' : '#bbb' }}>{conv.desc || '暂无'}</span>
+          {T('group.desc')}：<span style={{ color: conv.desc ? '#333' : '#bbb' }}>{conv.desc || T('group.descNone')}</span>
           {isOwner && (
             <Button type="link" size="small" onClick={() => {
               setNewDesc(conv.desc || ''); setDescEditing(true)
-            }}>编辑</Button>
+            }}>{T('group.editDesc')}</Button>
           )}
         </div>
       )}
 
       <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
-        <span>成员（{conv.members.length}）</span>
-        <Button type="link" size="small" onClick={openAdd}>＋ 拉人</Button>
+        <span>{T('group.members')}（{conv.members.length}）</span>
+        <Button type="link" size="small" onClick={openAdd}>{T('group.invite')}</Button>
       </div>
       <List
         dataSource={conv.members}
         renderItem={u => (
           <List.Item
             actions={isOwner && u !== conv.owner ? [
-              <Popconfirm key="del" title={`移出 ${u}？`} onConfirm={() => doRemove(u)}>
+              <Popconfirm key="del" title={T('group.confirmRemove').replace('{name}', u)} onConfirm={() => doRemove(u)}>
                 <Button type="text" danger size="small"
                         icon={<DeleteOutlined />} />
               </Popconfirm>,
@@ -151,7 +153,7 @@ export default function GroupInfo({ open, conv, onClose }: {
                 <Badge dot status={users.find(x => x.username === u)?.online
                                   ? 'success' : 'default'}
                        offset={[-4, 30]}
-                       title={users.find(x => x.username === u)?.online ? '在线' : '离线'}>
+                       title={users.find(x => x.username === u)?.online ? T('common.online') : T('common.offline')}>
                   <UserProfileCard username={u}>
                     <Avatar style={{ background: convColor(u) }}>
                       {u[0].toUpperCase()}
@@ -160,9 +162,9 @@ export default function GroupInfo({ open, conv, onClose }: {
                 </Badge>
               }
               title={<span>
-                {u === me?.username ? `${u}（我）` : u}
+                {u === me?.username ? `${u}${T('group.me')}` : u}
                 {u === conv.owner && (
-                  <Tag color="gold" style={{ marginLeft: 6 }}>群主</Tag>
+                  <Tag color="gold" style={{ marginLeft: 6 }}>{T('group.owner')}</Tag>
                 )}
               </span>}
             />
@@ -172,16 +174,16 @@ export default function GroupInfo({ open, conv, onClose }: {
 
       {isOwner && (
         <div style={{ marginTop: 24 }}>
-          <Popconfirm title="确定解散该群？" onConfirm={doDissolve}>
-            <Button danger block>解散群聊</Button>
+          <Popconfirm title={T('group.confirmDissolve')} onConfirm={doDissolve}>
+            <Button danger block>{T('group.dissolve')}</Button>
           </Popconfirm>
         </div>
       )}
 
-      <Modal title="邀请成员" open={addOpen} onOk={doAdd}
-             onCancel={() => setAddOpen(false)} okText="邀请" cancelText="取消">
+      <Modal title={T('group.inviteTitle')} open={addOpen} onOk={doAdd}
+             onCancel={() => setAddOpen(false)} okText={T('group.inviteTitle')} cancelText={T('common.cancel')}>
         <Select style={{ width: '100%' }} value={addName} onChange={setAddName}
-                placeholder="选择用户" options={candidates.map(c => ({ value: c, label: c }))} />
+                placeholder={T('group.selectUser')} options={candidates.map(c => ({ value: c, label: c }))} />
       </Modal>
     </Drawer>
   )

@@ -107,6 +107,93 @@ async def admin_search_messages(
     return await messaging.search_messages(query, page, limit)
 
 
+# ---------- 群管理（管理页「群管理」Tab） ----------
+
+@router.get("/groups")
+async def admin_list_groups(
+    q: str | None = Query(None, max_length=100),       # 名称/简介模糊搜索
+    start: str | None = Query(None),                   # 创建时间起（YYYY-MM-DD / ISO）
+    end: str | None = Query(None),                     # 创建时间止
+    member: str | None = Query(None),                  # 包含成员（单选）
+    active: bool | None = Query(None),                 # 状态：True=活跃（未解散）；
+                                                       # None=全部（解散群文档已删，恒活跃）
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    _: dict = Depends(require_admin),
+):
+    """全部群聊分页列表（管理页群管理 Tab）。解散的群文档已删除（同群主解散
+    语义），列表恒为存续群；前端对已解散状态用本地已知集合标记灰按钮。"""
+    query: dict = {"type": "group"}
+    if q:
+        import re as _re
+        rx = {"$regex": _re.escape(q), "$options": "i"}
+        query["$or"] = [{"name": rx}, {"desc": rx}]
+    if member:
+        query["members"] = member
+    if start:
+        query.setdefault("created_at", {})["$gte"] = \
+            f"{start}T00:00:00Z" if len(start) == 10 else start
+    if end:
+        query.setdefault("created_at", {})["$lte"] = \
+            f"{end}T23:59:59Z" if len(end) == 10 else end
+    total = await convs_col.count_documents(query)
+    cursor = convs_col.find(query).sort("last_msg.at", -1) \
+        .skip((page - 1) * limit).limit(limit)
+    groups = []
+    async for c in cursor:
+        groups.append({
+            "id": str(c["_id"]), "name": c.get("name"), "desc": c.get("desc") or "",
+            "owner": c.get("owner"), "members": c["members"],
+            "member_count": len(c["members"]),
+            "created_at": c.get("created_at"),
+            "last_msg_at": (c.get("last_msg") or {}).get("at"),
+            "last_seq": c.get("last_seq") or 0,
+            "msg_count": await msgs_col.count_documents({"conv_id": c["_id"]}),
+        })
+    return {"groups": groups, "total": total, "page": page, "limit": limit}
+
+
+@router.post("/groups/{conv_id}/dissolve")
+async def admin_dissolve_group(conv_id: str, _: dict = Depends(require_admin)):
+    """管理员解散任意群（与群主解散同一链路：系统消息 + 删除会话文档；
+    历史消息保留在库，仅不可见）。"""
+    from app.routers.convs import get_conv_or_404
+    conv = await get_conv_or_404(conv_id)
+    if conv["type"] != "group":
+        raise HTTPException(400, "仅群聊可解散")
+    from app.routers.convs import sys_msg
+    await messaging.send_system(conv, "admin", await sys_msg("admin", "admin_dissolve"))
+    await convs_col.delete_one({"_id": conv_id})
+    return {"ok": True}
+
+
+@router.get("/groups/{conv_id}/messages")
+async def admin_group_messages(
+    conv_id: str,
+    seq: int = -1,
+    after_seq: int = -1, before_seq: int = -1, limit: int = 0,
+    _: dict = Depends(require_admin),
+):
+    """管理员只读群消息（不要求是群成员；分段语义同 GET /api/convs/{id}/messages，
+    含 seq 分段寻址——历史查询跳转定位用；供群消息面板前翻/跳转最后）。"""
+    from app.routers.convs import get_conv_or_404, query_messages
+    conv = await get_conv_or_404(conv_id)
+    if conv["type"] != "group":
+        raise HTTPException(400, "仅群聊")
+    return await query_messages(conv_id, conv, seq=seq, after_seq=after_seq,
+                                before_seq=before_seq, limit=limit)
+
+
+@router.get("/groups/{conv_id}")
+async def admin_group_detail(conv_id: str, _: dict = Depends(require_admin)):
+    """管理员群详情（群信息 + 成员；非成员可读）。"""
+    from app.routers.convs import get_conv_or_404
+    conv = await get_conv_or_404(conv_id)
+    if conv["type"] != "group":
+        raise HTTPException(400, "仅群聊")
+    return conv_out(conv)
+
+
 @router.get("/stats")
 async def stats(_: dict = Depends(require_admin)):
     total = await users_col.count_documents({})

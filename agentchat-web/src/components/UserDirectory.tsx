@@ -5,6 +5,7 @@ import { ConvItem, UserItem, createPrivate, fetchUsers } from '../api'
 import { useStore } from '../store'
 import { convColor } from './ConvList'
 import { useIsMobile } from '../responsive'
+import { t as T, useLang } from '../i18n'
 import UserProfileCard from './UserProfileCard'
 
 export default function UserDirectory({ open, onClose }: {
@@ -20,6 +21,7 @@ export default function UserDirectory({ open, onClose }: {
   const [userPage, setUserPage] = useState(1)
   const [groupPage, setGroupPage] = useState(1)
   const isMobile = useIsMobile()
+  useLang()
 
   useEffect(() => {
     if (open) {
@@ -49,7 +51,7 @@ export default function UserDirectory({ open, onClose }: {
 
   const listBody = (children: React.ReactNode) => (
     <>
-      <Input.Search placeholder="搜索用户名 / 群名" value={filter}
+      <Input.Search placeholder={T('dir.searchPlaceholder')} value={filter}
                     onChange={e => { setFilter(e.target.value)
                                      setUserPage(1); setGroupPage(1) }}
                     style={{ marginBottom: 12 }} allowClear />
@@ -58,20 +60,20 @@ export default function UserDirectory({ open, onClose }: {
   )
 
   return (
-    <Modal title="通讯录" open={open} onCancel={onClose}
+    <Modal title={T('dir.title')} open={open} onCancel={onClose}
            footer={null} width={isMobile ? '100%' : 420}>
       <Tabs defaultActiveKey="private"
             items={[
               {
                 key: 'private',
-                label: '私聊',
+                label: T('dir.private'),
                 children: listBody(
                   <List
                     dataSource={filteredUsers}
                     pagination={{ pageSize: 10, size: 'small', current: userPage,
                                   onChange: setUserPage,
-                                  showTotal: t => `共 ${t} 人` }}
-                    locale={{ emptyText: '暂无其他用户' }}
+                                  showTotal: n => T('dir.totalUsers').replace('{n}', String(n)) }}
+                    locale={{ emptyText: T('dir.noUsers') }}
                     renderItem={u => (
                       <List.Item style={{ cursor: 'pointer', padding: '8px 4px' }}
                                  onClick={() => startChat(u.username)}>
@@ -91,9 +93,9 @@ export default function UserDirectory({ open, onClose }: {
                             {u.role === 'admin' && (
                               <Tag color="blue" style={{ marginLeft: 6 }}>admin</Tag>
                             )}
-                            {u.disabled && <Tag color="red" style={{ marginLeft: 6 }}>禁用</Tag>}
+                            {u.disabled && <Tag color="red" style={{ marginLeft: 6 }}>{T('admin.users.disabled')}</Tag>}
                           </span>}
-                          description={u.online ? '在线' : '离线'}
+                          description={u.online ? T('common.online') : T('common.offline')}
                         />
                       </List.Item>
                     )}
@@ -101,25 +103,25 @@ export default function UserDirectory({ open, onClose }: {
               },
               {
                 key: 'group',
-                label: '群聊',
+                label: T('dir.group'),
                 children: listBody(
                   <List
                     dataSource={myGroups}
                     pagination={{ pageSize: 10, size: 'small', current: groupPage,
                                   onChange: setGroupPage,
-                                  showTotal: t => `共 ${t} 个群` }}
-                    locale={{ emptyText: '还没有群聊，点左上角「建群」创建' }}
+                                  showTotal: n => T('dir.totalGroups').replace('{n}', String(n)) }}
+                    locale={{ emptyText: T('dir.noGroups') }}
                     renderItem={(g: ConvItem) => (
                       <List.Item style={{ cursor: 'pointer', padding: '8px 4px' }}
                                  onClick={() => { onClose(); openConv(g.id) }}>
                         <List.Item.Meta
                           avatar={
-                            <Avatar style={{ background: convColor(g.name || '群') }}
+                            <Avatar style={{ background: convColor(g.name || T('conv.group')) }}
                                     icon={<TeamOutlined />}>
                             </Avatar>
                           }
-                          title={g.name || '群聊'}
-                          description={`${g.members.length} 人 · 群主 ${g.owner}`}
+                          title={g.name || T('conv.group')}
+                          description={T('dir.groupDesc').replace('{n}', String(g.members.length)).replace('{owner}', String(g.owner))}
                         />
                       </List.Item>
                     )}

@@ -3,6 +3,7 @@ import { Avatar, Badge, Button, List, Popconfirm, Tooltip, theme } from 'antd'
 import { TeamOutlined, MessageOutlined } from '@ant-design/icons'
 import { ConvItem } from '../api'
 import { useStore, getReadSeq, hasMentionUnread } from '../store'
+import { t, useLang } from '../i18n'
 
 export const convColor = (name: string) => {
   const colors = ['#f56a00', '#7265e6', '#ffbf00', '#00a2ae',
@@ -32,6 +33,7 @@ export default function ConvList({ onOpenDirectory, onCreateGroup }: {
   const users = useStore(s => s.users)
   const readVersion = useStore(s => s.readVersion)   // 未读变化时重算红点
   const { token } = theme.useToken()
+  useLang()
 
   const sorted = useMemo(() =>
     [...convs].sort((a, b) =>
@@ -41,10 +43,10 @@ export default function ConvList({ onOpenDirectory, onCreateGroup }: {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '12px 12px 4px', display: 'flex', gap: 8 }}>
         <Button block icon={<MessageOutlined />} onClick={onOpenDirectory}>
-          通讯录
+          {t('chat.contacts')}
         </Button>
         <Button block icon={<TeamOutlined />} onClick={onCreateGroup}>
-          建群
+          {t('chat.createGroup')}
         </Button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -53,7 +55,7 @@ export default function ConvList({ onOpenDirectory, onCreateGroup }: {
           renderItem={(c: ConvItem) => {
             const unread = Math.max(0, c.last_seq - getReadSeq(c.id))
             const mentioned = hasMentionUnread(c.id)
-            const title = c.type === 'group' ? (c.name || '群聊')
+            const title = c.type === 'group' ? (c.name || t('conv.group'))
               : c.members.filter(m => m !== me?.username)[0] || c.id
             // 私聊头像右下角在线小点（与通讯录一致）；群聊不加
             const peerOnline = c.type === 'private'
@@ -78,7 +80,7 @@ export default function ConvList({ onOpenDirectory, onCreateGroup }: {
                         return peerOnline === undefined ? av : (
                           <Badge dot status={peerOnline ? 'success' : 'default'}
                                  offset={[-4, 30]}
-                                 title={peerOnline ? '在线' : '离线'}>
+                                 title={peerOnline ? t('common.online') : t('common.offline')}>
                             {av}
                           </Badge>
                         )
@@ -91,8 +93,8 @@ export default function ConvList({ onOpenDirectory, onCreateGroup }: {
                                   overflow: 'hidden', textOverflow: 'ellipsis',
                                   maxWidth: 170 }}>
                       {c.last_msg
-                        ? `${c.last_msg.sender === me?.username ? '我' : c.last_msg.sender}: ${c.last_msg.preview}`
-                        : '暂无消息'}
+                        ? `${c.last_msg.sender === me?.username ? t('conv.me') : c.last_msg.sender}: ${c.last_msg.preview}`
+                        : t('conv.noMsg')}
                     </div>
                   }
                 />

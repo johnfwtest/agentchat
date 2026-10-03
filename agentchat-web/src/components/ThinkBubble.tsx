@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Avatar, Button } from 'antd'
 import { ThinkState } from '../store'
 import { convColor } from './ConvList'
+import { t as i18nT, useLang } from '../i18n'
 
 const TAIL_LINES = 8   // 收起态只显示最后几行（父页面保持轻量）
 
@@ -14,6 +15,8 @@ export default function ThinkBubble({ t, onClose }: {
   t: ThinkState; onClose: () => void }) {
   const [expanded, setExpanded] = useState(false)
   const [frameReady, setFrameReady] = useState(false)
+  useLang()
+  useLang()
   const bodyRef = useRef<HTMLDivElement>(null)
   const frameRef = useRef<HTMLIFrameElement>(null)
   const textRef = useRef(t.text)
@@ -75,15 +78,15 @@ export default function ThinkBubble({ t, onClose }: {
         <div style={{ fontSize: 12, color: '#999', marginBottom: 2, display: 'flex',
                       alignItems: 'center', gap: 6 }}>
           <b style={{ color: '#666' }}>{t.sender}</b>
-          <span>{t.done ? '思考过程' : '正在思考…'}</span>
+          <span>{t.done ? i18nT('msg.thought') : i18nT('msg.thinking')}</span>
           {!t.done && <span className="think-dot" />}
           <span style={{ marginLeft: 'auto', display: 'inline-flex' }}>
             <Button type="text" size="small" style={{ fontSize: 12 }}
                     onClick={() => { setExpanded(!expanded); setFrameReady(false) }}>
-              {expanded ? '收起' : '展开'}
+              {expanded ? i18nT('msg.collapse') : i18nT('msg.expand')}
             </Button>
             <Button type="text" size="small" style={{ fontSize: 12 }}
-                    onClick={openInTab}>新窗口</Button>
+                    onClick={openInTab}>{i18nT('msg.newWindow')}</Button>
             <Button type="text" size="small" style={{ fontSize: 12 }}
                     onClick={onClose}>✕</Button>
           </span>

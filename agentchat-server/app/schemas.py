@@ -14,6 +14,7 @@ def now_iso() -> str:
 class LoginIn(BaseModel):
     username: str
     password: str
+    lang: str | None = None      # 界面语言（zh/en）：登录时记入 Redis，系统消息按发起人语言生成
 
 
 class LoginOut(BaseModel):

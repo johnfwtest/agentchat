@@ -7,37 +7,61 @@ import { ConvItem, UserItem, adminCreateUser, adminListConvs, adminSearchMessage
          adminSettings, adminUpdateSettings, adminUpdateUser, fetchUsers } from '../api'
 import { useStore } from '../store'
 import { useIsMobile } from '../responsive'
+import { t as T, useLang } from '../i18n'
 import MetricsPanel from '../components/MetricsPanel'
+import AdminGroupsTab from './AdminGroupsTab'
 import Markdown from '../components/Markdown'
 
 export default function Admin() {
   const logout = useStore(s => s.logout)
+  const [activeKey, setActiveKey] = useState('users')
+  // 历史查询 → 群管理消息面板的跳转载荷（切换 Tab + 打开面板并定位消息）
+  useLang()
+  const [groupJump, setGroupJump] = useState<{ convId: string; seq: number } | null>(null)
 
   return (
     <div style={{ height: 'var(--app-height, 100vh)',
                   display: 'flex', flexDirection: 'column' }}>
       <div style={{ background: '#001529', color: '#fff', padding: '0 16px',
                     display: 'flex', alignItems: 'center', height: 48 }}>
-        <b style={{ fontSize: 16 }}>AgentChat 管理后台</b>
+        <b style={{ fontSize: 16 }}>{T('admin.title')}</b>
         <Space style={{ marginLeft: 'auto' }}>
           <Button size="small" ghost onClick={() => { location.hash = '#/' }}>
-            返回聊天
+            {T('admin.backChat')}
           </Button>
-          <Button size="small" ghost onClick={logout}>退出登录</Button>
+          <Button size="small" ghost onClick={logout}>{T('chat.logout')}</Button>
         </Space>
       </div>
-      <Tabs defaultActiveKey="users" style={{ padding: '0 16px' }}
+      {/* Tabs 占满剩余高度（content-holder/content 逐层满高），让群消息面板的
+          内嵌滚动框真正成为滚动容器——否则高度链断裂、滚的是外层页面 */}
+      <style>{`
+        .admin-tabs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+        .admin-tabs > .ant-tabs-content-holder { flex: 1; min-height: 0; }
+        .admin-tabs > .ant-tabs-content-holder > .ant-tabs-content,
+        .admin-tabs > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
+          height: 100%; min-height: 0;
+        }
+        .admin-tabs > .ant-tabs-nav { margin-bottom: 12px; }
+      `}</style>
+      <Tabs activeKey={activeKey} onChange={setActiveKey}
+            style={{ padding: '0 16px' }} className="admin-tabs"
             items={[
-              { key: 'users', label: '账号管理', children: <UsersTab /> },
-              { key: 'params', label: '系统参数', children: <ParamsTab /> },
-              { key: 'history', label: '历史消息查询', children: <AdminHistoryTab /> },
-              { key: 'monitor', label: '统计与监控', children: <MetricsPanel /> },
+              { key: 'users', label: T('admin.tab.users'), children: <UsersTab /> },
+              { key: 'params', label: T('admin.tab.params'), children: <ParamsTab /> },
+              { key: 'groups', label: T('admin.tab.groups'),
+                children: <AdminGroupsTab jump={groupJump} onJumpDone={() => setGroupJump(null)} /> },
+              { key: 'history', label: T('admin.tab.history'),
+                children: <AdminHistoryTab onJumpGroup={(convId, seq) => {
+                  setGroupJump({ convId, seq })
+                  setActiveKey('groups')
+                }} /> },
+              { key: 'monitor', label: T('admin.tab.monitor'), children: <MetricsPanel /> },
             ]} />
     </div>
   )
 }
 
-function AdminHistoryTab() {
+function AdminHistoryTab({ onJumpGroup }: { onJumpGroup: (convId: string, seq: number) => void }) {
   const isMobile = useIsMobile()
   const users = useStore(s => s.users)
   const myConvs = useStore(s => s.convs)
@@ -63,10 +87,19 @@ function AdminHistoryTab() {
     const c = allConvs.find(x => x.id === id)
     if (!c) return id.slice(0, 14) + '…'
     return c.type === 'group'
-      ? `群：${c.name || '群聊'}`
-      : `私聊：${c.members.join(' ↔ ')}`
+      ? T('conv.groupLabel').replace('{name}', c.name || T('conv.group'))
+      : T('conv.privateLabel').replace('{name}', c.members.join(' ↔ '))
   }
-  const canJump = (id: string) => myConvs.some(m => m.id === id)
+  const canJump = (id: string) => {
+    const c = allConvs.find(x => x.id === id)
+    if (c?.type === 'group') return true          // 群：任意群可跳（走群管理消息面板）
+    return myConvs.some(m => m.id === id)         // 私聊：保持现状（仅自己所在会话）
+  }
+  const doJump = (id: string, seq: number) => {
+    const c = allConvs.find(x => x.id === id)
+    if (c?.type === 'group') onJumpGroup(id, seq)
+    else jumpToMessage(id, seq)
+  }
 
   const run = async (p = 1, size = pageSize) => {
     setLoading(true)
@@ -98,25 +131,25 @@ function AdminHistoryTab() {
       <Card size="small" style={{ marginBottom: 12 }}>
         <Space wrap size={[12, 8]}>
           <DatePicker.RangePicker value={range as any} onChange={setRange}
-                                  placeholder={['开始日期', '结束日期']} />
-          <Select allowClear placeholder="消息类型" style={{ width: 110 }}
+                                  placeholder={[T('history.startDate'), T('history.endDate')]} />
+          <Select allowClear placeholder={T('history.msgType')} style={{ width: 110 }}
                   value={type} onChange={setType}
-                  options={[{ value: 'text', label: '文本' },
-                            { value: 'system', label: '系统' }]} />
-          <Select allowClear placeholder="人员（发送者）" style={{ width: 150 }}
+                  options={[{ value: 'text', label: T('history.text') },
+                            { value: 'system', label: T('history.system') }]} />
+          <Select allowClear placeholder={T('history.sender')} style={{ width: 150 }}
                   value={sender} onChange={setSender}
                   options={users.map(u => ({ value: u.username, label: u.username }))} />
-          <Select allowClear placeholder="接收人（仅私聊消息）" style={{ width: 170 }}
+          <Select allowClear placeholder={T('admin.history.recipient')} style={{ width: 170 }}
                   value={recipient} onChange={setRecipient}
                   options={users.map(u => ({ value: u.username, label: u.username }))} />
-          <Input allowClear placeholder="关键词（可选）" style={{ width: 170 }}
+          <Input allowClear placeholder={T('history.keyword')} style={{ width: 170 }}
                  value={q} onChange={e => setQ(e.target.value)}
                  onPressEnter={() => run(1)} />
           <Button type="primary" icon={<SearchOutlined />}
-                  loading={loading} onClick={() => run(1)}>查询</Button>
-          <Button icon={<ClearOutlined />} onClick={clearAll}>清空条件</Button>
+                  loading={loading} onClick={() => run(1)}>{T('common.search')}</Button>
+          <Button icon={<ClearOutlined />} onClick={clearAll}>{T('history.clear')}</Button>
           <span style={{ fontSize: 12, color: '#999' }}>
-            全服查询；群/系统消息无接收人；点击自己所在的会话名可跳转
+            {T('admin.history.serverWide')}
           </span>
         </Space>
       </Card>
@@ -133,25 +166,25 @@ function AdminHistoryTab() {
              }}
              pagination={{
                total, current: page, pageSize,
-               showTotal: t => `共 ${t} 条`,
+               showTotal: n => T('history.total').replace('{n}', String(n)),
                onChange: (p) => run(p),
                showSizeChanger: true,
                pageSizeOptions: ['50', '100', '200', '500', '1000'],
                onShowSizeChange: (_, size) => { setPageSize(size); run(1, size) },
              }}>
-        <Table.Column title="时间" dataIndex="created_at" width={150}
+        <Table.Column title={T('history.time')} dataIndex="created_at" width={150}
                       render={(v: string) => (v || '').replace('T', ' ').slice(0, 19)} />
-        <Table.Column title="会话" dataIndex="conv_id" width={200}
+        <Table.Column title={T('history.conv')} dataIndex="conv_id" width={200}
                       render={(v: string, m: any) => canJump(v) ? (
-                        <a onClick={() => jumpToMessage(m.conv_id, m.seq)}
-                           title="跳转到该会话并定位此消息"
+                        <a onClick={() => doJump(m.conv_id, m.seq)}
+                           title={T('history.jumpTo')}
                            style={{ fontSize: 13 }}>{convLabel(v)}</a>
                       ) : <span style={{ fontSize: 13, color: '#888' }}>{convLabel(v)}</span>} />
-        <Table.Column title="发送者" dataIndex="sender" width={100} />
-        <Table.Column title="类型" dataIndex="type" width={80}
+        <Table.Column title={T('history.sender')} dataIndex="sender" width={100} />
+        <Table.Column title={T('history.msgType')} dataIndex="type" width={80}
                       render={(v: string) => v === 'system'
-                        ? <Tag>系统</Tag> : <Tag color="blue">文本</Tag>} />
-        <Table.Column title="内容" dataIndex="content"
+                        ? <Tag>{T('history.system')}</Tag> : <Tag color="blue">{T('history.text')}</Tag>} />
+        <Table.Column title="Content" dataIndex="content"
                       render={(v: string, m: any) => (
                         <span style={{ color: m.type === 'system' ? '#999' : undefined }}>
                           {v.length > 80 ? v.slice(0, 80) + '…' : v}
@@ -163,6 +196,7 @@ function AdminHistoryTab() {
 }
 
 function ParamsTab() {
+  useLang()
   type FieldMeta = { default: number; min: number; max: number; label: string }
   const [form] = Form.useForm()
   const [fields, setFields] = useState<Record<string, FieldMeta>>({})
@@ -181,7 +215,7 @@ function ParamsTab() {
     setSaving(true)
     try {
       await adminUpdateSettings(vals)
-      message.success('已保存，立即生效')
+      message.success(T('admin.params.saved'))
       load()
     } catch (e: any) { message.error(e.message) }
     finally { setSaving(false) }
@@ -190,21 +224,21 @@ function ParamsTab() {
   return (
     <Card size="small" style={{ margin: '12px 0', maxWidth: 520 }}>
       <Alert type="info" showIcon style={{ marginBottom: 16 }}
-             message="系统参数保存后立即生效，无需重启服务；重启后保持已保存的值" />
+             message={T('admin.params.hint')} />
       <Form form={form} layout="vertical" onFinish={save}>
         {Object.entries(fields).map(([key, f]) => (
           <Form.Item key={key} name={key} label={f.label}
                      rules={[{ required: true },
                              { type: 'number', min: f.min, max: f.max,
-                               message: `取值范围 ${f.min} ~ ${f.max}` }]}
-                     extra={`默认 ${f.default}，范围 ${f.min} ~ ${f.max}`}>
+                               message: T('admin.params.rangeHint').replace('{min}', String(f.min)).replace('{max}', String(f.max)) }]}
+                     extra={T('admin.params.defaultHint').replace('{d}', String(f.default)).replace('{min}', String(f.min)).replace('{max}', String(f.max))}>
             <InputNumber min={f.min} max={f.max} precision={0}
                          style={{ width: '100%' }} />
           </Form.Item>
         ))}
         <Space>
-          <Button type="primary" htmlType="submit" loading={saving}>保存</Button>
-          <Button onClick={load}>重新加载</Button>
+          <Button type="primary" htmlType="submit" loading={saving}>{T('admin.params.save')}</Button>
+          <Button onClick={load}>{T('admin.params.reload')}</Button>
         </Space>
       </Form>
     </Card>
@@ -213,6 +247,7 @@ function ParamsTab() {
 
 function UsersTab() {
   const isMobile = useIsMobile()
+  useLang()
   const [users, setUsers] = useState<UserItem[]>([])
   const [loading, setLoading] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
@@ -231,7 +266,7 @@ function UsersTab() {
   const doCreate = async (vals: { username: string; password: string }) => {
     try {
       await adminCreateUser(vals.username, vals.password)
-      message.success(`已创建 ${vals.username}`)
+      message.success(T('admin.users.createdOk').replace('{name}', vals.username))
       setCreateOpen(false); form.resetFields(); load()
     } catch (e: any) { message.error(e.message) }
   }
@@ -239,7 +274,7 @@ function UsersTab() {
   const doReset = async (vals: { password: string }) => {
     try {
       await adminUpdateUser(resetFor!, { password: vals.password })
-      message.success('密码已重置')
+      message.success(T('admin.users.resetOk'))
       setResetFor(null); resetForm.resetFields()
     } catch (e: any) { message.error(e.message) }
   }
@@ -255,68 +290,68 @@ function UsersTab() {
     <Card size="small" style={{ margin: '12px 0' }}>
       <Space style={{ marginBottom: 12 }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          新建账号
+          {T('admin.users.create')}
         </Button>
-        <Button icon={<ReloadOutlined />} onClick={load}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={load}>{T('admin.users.refresh')}</Button>
       </Space>
       <Table rowKey="username" loading={loading} dataSource={users} size="small"
              pagination={false} scroll={{ x: isMobile ? 640 : undefined }}>
-        <Table.Column title="用户名" dataIndex="username" />
-        <Table.Column title="角色" dataIndex="role" width={90}
+        <Table.Column title={T('admin.users.username')} dataIndex="username" />
+        <Table.Column title={T('admin.users.roleCol')} dataIndex="role" width={90}
                       render={(r: string) => r === 'admin'
                         ? <Tag color="blue">admin</Tag> : <Tag>user</Tag>} />
-        <Table.Column title="在线" dataIndex="online" width={80}
+        <Table.Column title={T('admin.users.online')} dataIndex="online" width={80}
                       render={(v: boolean) => v
-                        ? <Tag color="green">在线</Tag> : <Tag>离线</Tag>} />
-        <Table.Column title="状态" dataIndex="disabled" width={80}
+                        ? <Tag color="green">{T('common.online')}</Tag> : <Tag>{T('common.offline')}</Tag>} />
+        <Table.Column title={T('admin.users.status')} dataIndex="disabled" width={80}
                       render={(v: boolean) => v
-                        ? <Tag color="red">禁用</Tag> : <Tag color="green">正常</Tag>} />
-        <Table.Column title="创建时间" dataIndex="created_at" width={170}
+                        ? <Tag color="red">{T('admin.users.disabled')}</Tag> : <Tag color="green">{T('admin.users.normal')}</Tag>} />
+        <Table.Column title={T('admin.users.createdAt')} dataIndex="created_at" width={170}
                       render={(v: string) => v ? v.replace('T', ' ').slice(0, 19) : '-'} />
-        <Table.Column title="操作" width={230} render={(_: any, u: UserItem) => (
+        <Table.Column title={T('admin.users.actionsCol')} width={230} render={(_: any, u: UserItem) => (
           <Space>
-            <Button size="small" onClick={() => setResetFor(u.username)}>重置密码</Button>
-            <Popconfirm title={u.disabled ? `启用 ${u.username}？`
-                                          : `禁用 ${u.username}？（会立即踢下线）`}
+            <Button size="small" onClick={() => setResetFor(u.username)}>{T('admin.users.resetPwd')}</Button>
+            <Popconfirm title={u.disabled ? T('admin.users.confirmEnable').replace('{name}', u.username)
+                                          : T('admin.users.confirmDisable').replace('{name}', u.username)}
                         onConfirm={() => toggleDisabled(u)}>
               <Button size="small" danger={!u.disabled}>
-                {u.disabled ? '启用' : '禁用'}
+                {u.disabled ? T('admin.users.enable') : T('admin.users.disable')}
               </Button>
             </Popconfirm>
           </Space>
         )} />
       </Table>
 
-      <Modal title="新建账号" open={createOpen} onCancel={() => setCreateOpen(false)}
-             onOk={() => form.submit()} okText="创建" cancelText="取消">
+      <Modal title={T('admin.users.createTitle')} open={createOpen} onCancel={() => setCreateOpen(false)}
+             onOk={() => form.submit()} okText={T('chat.create')} cancelText={T('common.cancel')}>
         <Form form={form} layout="vertical" onFinish={doCreate}>
-          <Form.Item name="username" label="用户名"
+          <Form.Item name="username" label={T('admin.users.username')}
                      rules={[{ required: true },
                              { pattern: /^[a-z0-9_-]{2,32}$/,
-                               message: '小写字母/数字/_/-，2-32 位' }]}>
+                               message: T('admin.users.usernameHint') }]}>
             <Input autoFocus />
           </Form.Item>
-          <Form.Item name="password" label="初始密码"
+          <Form.Item name="password" label={T('admin.users.initPwd')}
                      rules={[{ required: true }]}>
             <Input.Password />
           </Form.Item>
         </Form>
       </Modal>
 
-      <Modal title={`重置密码：${resetFor}`} open={!!resetFor}
+      <Modal title={T('admin.users.resetTitle').replace('{name}', String(resetFor))} open={!!resetFor}
              onCancel={() => { setResetFor(null); resetForm.resetFields() }}
-             onOk={() => resetForm.submit()} okText="重置" cancelText="取消">
+             onOk={() => resetForm.submit()} okText={T('admin.users.resetPwd')} cancelText={T('common.cancel')}>
         <Form form={resetForm} layout="vertical" onFinish={doReset}>
-          <Form.Item name="password" label="新密码" rules={[{ required: true }]}>
+          <Form.Item name="password" label={T('admin.users.newPwd')} rules={[{ required: true }]}>
             <Input.Password autoFocus />
           </Form.Item>
-          <Form.Item name="password2" label="确认新密码" dependencies={['password']}
+          <Form.Item name="password2" label={T('admin.users.confirmPwd')} dependencies={['password']}
                      rules={[{ required: true },
                              ({ getFieldValue }) => ({
                                validator(_, value) {
                                  if (!value || value === getFieldValue('password'))
                                    return Promise.resolve()
-                                 return Promise.reject(new Error('两次输入的密码不一致'))
+                                 return Promise.reject(new Error(T('admin.users.pwdMismatch')))
                                },
                              })]}>
             <Input.Password onPressEnter={() => resetForm.submit()} />

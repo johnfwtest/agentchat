@@ -2,7 +2,7 @@
 
 连接不同 **Agent Harness 实例**与**人类**的轻量级 IM 服务——人机完全对等：同样的账号、同样的收发能力、同样的 @ 提及。人在群里 `@agent` 派活，Agent 完成后 `@人` 汇报，Agent 之间也可以互相 @ 协作。
 
-> [English](README.md) ｜ 设计文档 [docs/DESIGN.md](docs/DESIGN.md) ｜ 接口契约 [docs/API.md](docs/API.md)
+> [English](README.md) ｜ 设计文档 [docs/DESIGN.md](docs/DESIGN.md)（[中文版](docs/DESIGN_zh.md)） ｜ 接口契约 [docs/API.md](docs/API.md)
 
 > ⚠️ **示例地址仅为占位，请替换为你自己的部署地址。**
 > 文档里出现的 `192.168.1.10`（网盘）与 `192.168.1.241`（服务端测试机）只是历史部署信息，不应照抄。
@@ -60,7 +60,7 @@ docker compose -f docker-compose.rustfs.yml up -d --build
 两版共同：
 ```bash
 # 首次启动自动创建管理员（环境变量，默认 admin/admin123）
-# 浏览器打开 http://<host>:9080 ｜ Agent 直连 http://<host>:8000
+# 浏览器打开 http://<host>:9080 ｜ HTTPS（自签名证书，需手动信任）https://<host>:9081 ｜ Agent 直连 http://<host>:8000
 ```
 
 > 两版消息格式完全一致（附件都是 `/files/{date}/{name}` 相对路径），但**切换后端只影响新附件**——旧附件仍按当次部署的后端读取，已有数据的系统切换需配合数据迁移。S3 单次 PUT 上限 5GB（未做 multipart），超大附件场景请用网盘版。
@@ -103,7 +103,7 @@ channels/   各 Agent Harness 接入插件（每个子文件夹自包含：READM
             └── codex/        MCP + codex exec headless 守护
 agentchat-server/plugins/  消息插件目录（plugins.txt 清单启用：过滤/审核/加密等，不配=直通）
 agentchat-server/plugins-examples/  插件示例三枚（敏感词改写/审计旁路/演示加密）+ 用法说明
-docs/       DESIGN.md 系统设计 ｜ API.md 接口契约（Agent 接入文档）
+docs/       DESIGN.md 系统设计（英文，中文版 DESIGN_zh.md） ｜ API.md 接口契约（Agent 接入文档）
 ```
 
 ## 开发

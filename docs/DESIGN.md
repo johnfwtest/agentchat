@@ -699,7 +699,7 @@ volumes:
   mongo_data:
 ```
 
-agentchat-web's nginx.conf: serves the `React` build (`/usr/share/nginx/html`, SPA fallback to `index.html`), proxies `/api/` and `/ws` to `agentchat-server:8000` (WS needs `Upgrade`/`Connection` headers), and forwards `/files/` to the files container (same-origin relative attachment reads). Caching: `index.html` sends `Cache-Control: no-cache` (revalidated each time so releases take effect immediately); `/assets/` (Vite hashed filenames) get `max-age=31536000, immutable`.
+agentchat-web's nginx.conf: serves the `React` build on both :80 and :443 (self-signed HTTPS, built-time generated cert, mapped as `9081:443`) (`/usr/share/nginx/html`, SPA fallback to `index.html`), proxies `/api/` and `/ws` to `agentchat-server:8000` (WS needs `Upgrade`/`Connection` headers), and forwards `/files/` to the files container (same-origin relative attachment reads). Caching: `index.html` sends `Cache-Control: no-cache` (revalidated each time so releases take effect immediately); `/assets/` (Vite hashed filenames) get `max-age=31536000, immutable`.
 
 ### 10.3 Environment variables (agentchat-server)
 

@@ -4,6 +4,7 @@ import { ArrowLeftOutlined, LogoutOutlined, TeamOutlined } from '@ant-design/ico
 import { ConvItem, createGroup, fetchUsers } from '../api'
 import { useStore } from '../store'
 import { useIsMobile } from '../responsive'
+import { t, useLang } from '../i18n'
 import { convColor } from '../components/ConvList'
 import ConvList from '../components/ConvList'
 import MessageList from '../components/MessageList'
@@ -30,6 +31,7 @@ export default function Chat() {
   const [groupName, setGroupName] = useState('')
   const [groupMembers, setGroupMembers] = useState<string[]>([])
   const isMobile = useIsMobile()
+  useLang()
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
 
   // 点会话（含重复点同一个）必切到聊天视图：订阅 openConv 的显式 tick——
@@ -50,7 +52,7 @@ export default function Chat() {
 
   const convTitle = activeConv
     ? (activeConv.type === 'group'
-        ? (activeConv.name || '群聊')
+        ? (activeConv.name || t('conv.group'))
         : activeConv.members.filter(m => m !== me?.username)[0] || activeConv.id)
     : 'AgentChat'
   const peerOnline = activeConv?.type === 'private'
@@ -104,13 +106,13 @@ export default function Chat() {
       <span style={{ marginLeft: 10, display: 'inline-flex',
                      alignItems: 'center', gap: 5, fontSize: 12, color: '#888' }}>
         <Badge dot status={peerOnline ? 'success' : 'default'} />
-        {peerOnline ? '在线' : '离线'}
+        {peerOnline ? t('common.online') : t('common.offline')}
       </span>
     )}
     {activeConv?.type === 'group' && (
       <Button type="text" icon={<TeamOutlined />} style={{ marginLeft: 'auto' }}
               onClick={() => setGroupInfoOpen(true)}>
-        群信息（{activeConv.members.length}）
+        {t('chat.groupInfo')}（{activeConv.members.length}）
       </Button>
     )}
   </>)
@@ -120,10 +122,10 @@ export default function Chat() {
     <GroupInfo open={groupInfoOpen} conv={activeConv}
                onClose={() => setGroupInfoOpen(false)} />
     <UserDirectory open={dirOpen} onClose={() => setDirOpen(false)} />
-    <Modal title="创建群聊" open={createGroupOpen}
+    <Modal title={t('chat.createGroupTitle')} open={createGroupOpen}
            onCancel={() => setCreateGroupOpen(false)}
-           onOk={doCreateGroup} okText="创建" cancelText="取消">
-      <Input placeholder="群名称（创建后可在群信息中邀请成员）" value={groupName}
+           onOk={doCreateGroup} okText={t('chat.create')} cancelText={t('common.cancel')}>
+      <Input placeholder={t('chat.groupNamePlaceholder')} value={groupName}
              onChange={e => setGroupName(e.target.value)} autoFocus
              onPressEnter={doCreateGroup} />
     </Modal>
@@ -142,11 +144,11 @@ export default function Chat() {
               <span style={{ marginLeft: 'auto', fontWeight: 400, fontSize: 13,
                              display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 {me?.role === 'admin' && (
-                  <a onClick={() => { location.hash = '#/admin' }}>管理页</a>
+                  <a onClick={() => { location.hash = '#/admin' }}>{t('chat.adminPage')}</a>
                 )}
                 <b>{me?.username}</b>
                 <Button type="text" size="small" icon={<LogoutOutlined />}
-                        onClick={logout} title="退出登录" />
+                        onClick={logout} title={t('chat.logout')} />
               </span>
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
@@ -163,7 +165,7 @@ export default function Chat() {
                           background: '#fff', overflow: 'hidden', gap: 2 }}>
               <Button type="text" icon={<ArrowLeftOutlined />}
                       onClick={() => setMobileView('list')}
-                      title="返回会话列表" />
+                      title={t('chat.backToList')} />
               <span style={{ overflow: 'hidden' }}>{headerContent}</span>
             </div>
             <Content style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -203,11 +205,11 @@ export default function Chat() {
             <b>{me?.username}</b>
             {me?.role === 'admin' && (
               <a style={{ marginLeft: 8, fontSize: 12 }}
-                 onClick={() => { location.hash = '#/admin' }}>管理页</a>
+                 onClick={() => { location.hash = '#/admin' }}>{t('chat.adminPage')}</a>
             )}
           </span>
           <Button type="text" size="small" icon={<LogoutOutlined />}
-                  onClick={logout} title="退出登录" />
+                  onClick={logout} title={t('chat.logout')} />
         </div>
       </Sider>
 

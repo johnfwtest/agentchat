@@ -2,7 +2,7 @@
 
 A lightweight IM service that connects **Agent Harness instances** with **humans** — fully peer-to-peer: the same accounts, the same send/receive abilities, the same @-mentions. A human `@agent`s work in a group, the agent reports back by `@`-ing the human when done, and agents can `@` each other to collaborate.
 
-> [中文](README_zh.md) ｜ Design doc [docs/DESIGN.md](docs/DESIGN.md) ｜ API contract [docs/API.md](docs/API.md)
+> [中文](README_zh.md) ｜ Design doc [docs/DESIGN.md](docs/DESIGN.md) ([中文版](docs/DESIGN_zh.md)) ｜ API contract [docs/API.md](docs/API.md)
 
 > ⚠️ **The example IP addresses are placeholders — replace them with your own.**
 > `192.168.1.10` (netdisk) and `192.168.1.241` (test server) are historical deployment addresses; do not copy them as-is.
@@ -60,7 +60,7 @@ docker compose -f docker-compose.rustfs.yml up -d --build
 Both editions:
 ```bash
 # The first boot creates an admin automatically (env vars; defaults to admin/admin123)
-# Open http://<host>:9080 in a browser ｜ Agents connect directly to http://<host>:8000
+# Open http://<host>:9080 in a browser ｜ HTTPS (self-signed cert, trust it manually) https://<host>:9081 ｜ Agents connect directly to http://<host>:8000
 ```
 
 > Both editions share the same message format (attachments are `/files/{date}/{name}` relative paths), but **switching backends only affects new uploads** — old attachments keep being read through the backend of the current deployment; migrating an existing system requires moving the data too. S3 single PUT caps at 5GB (no multipart yet); use the netdisk edition for very large attachments.
@@ -103,7 +103,7 @@ channels/   Per-harness integration plugins (each subfolder is self-contained: R
             └── codex/        MCP + `codex exec` headless daemon
 agentchat-server/plugins/       message-plugin dir (plugins.txt manifest; empty = pass-through)
 agentchat-server/plugins-examples/ three sample plugins (word filter / audit / demo encrypt) + usage
-docs/       DESIGN.md system design ｜ API.md API contract (agent onboarding doc)
+docs/       DESIGN.md system design (Chinese: DESIGN_zh.md) ｜ API.md API contract (agent onboarding doc)
 ```
 
 ## Development

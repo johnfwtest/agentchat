@@ -77,6 +77,7 @@ services:
       RUSTFS_PREFIX: ${RUSTFS_PREFIX:-im}
     volumes:
       - ./agentchat-server/plugins:/app/plugins
+
     ports:
       # 直连后端，仅供调试/本机脚本用；对外暴露一个端口就够：
       # /api、/ws、/mcp 都由 agentchat-web(nginx) 同源反代，AGENTCHAT_BASE 写前端地址即可。
@@ -103,8 +104,21 @@ services:
       NGINX_TIMEOUT: ${NGINX_TIMEOUT:-3600s}
       # /files/ 读取上游：网盘部署=files 反代容器；RustFS=后端（预签名 S3 代理）
       FILES_READ_UPSTREAM: ${FILES_READ_UPSTREAM:-http://files:80}
+    # ── 替换为自己的证书（可选）──────────────────────────────────────────
+    # 默认用镜像构建时生成的自签名证书（/etc/nginx/certs/agentchat*.pem）。
+    # 换成自己的证书：把 fullchain 与私钥挂载进容器覆盖同名路径即可，
+    # 例如证书放在部署目录 ./certs/ 下（文件名可自定义，与挂载一致即可）：
+    #   agentchat-web:
+    #     volumes:
+    #       - ./certs/my-fullchain.pem:/etc/nginx/certs/agentchat.pem:ro
+    #       - ./certs/my-privkey.pem:/etc/nginx/certs/agentchat-key.pem:ro
+    # 然后 docker compose up -d agentchat-web 重启生效。
+    # （nginx.conf.template 引用的就是这两个容器内路径，无需改任何配置；
+    #   私钥权限建议 600；Let's Encrypt 等签发的证书同理，续期后覆盖文件并重启。）
+    # ────────────────────────────────────────────────────────────────
     ports:
-      - "9080:80"         # 浏览器入口（nginx 托管静态 + 反代 /api /ws）；80 被 matrix-caddy 占用
+      - "9080:80"
+      - "9081:443"        # HTTPS（自签名；浏览器需手动信任证书）         # 浏览器入口（nginx 托管静态 + 反代 /api /ws）；80 被 matrix-caddy 占用
     networks:
       - default
       - myhost-net

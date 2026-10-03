@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useStore } from '../store'
+import { t, useLang } from '../i18n'
 
 // HTML 可直接播放的视频/音频扩展（与 Composer 上传白名单一致；
 // .ogg 有音视频歧义，统一按视频渲染——浏览器 video 标签可播纯音频 ogg）
@@ -12,15 +13,16 @@ const AUDIO_RE = /\.(mp3|wav|m4a|flac)(\?|#|$)/i
     只有用户自己关闭）；音频 → 内联标准播放器。 */
 function Media({ src, alt }: { src?: string; alt?: string }) {
   const openMediaViewer = useStore(s => s.openMediaViewer)
+  useLang()
   if (!src) return null
   if (AUDIO_RE.test(src)) {
     return <audio src={src} controls preload="metadata"
-                  title={alt || '音频'}
+                  title={alt || t('conv.audio')}
                   style={{ maxWidth: 320, verticalAlign: 'top' }} />
   }
   if (VIDEO_RE.test(src)) {
     return (
-      <video src={src} preload="metadata" title={alt || '视频'}
+      <video src={src} preload="metadata" title={alt || t('conv.video')}
              onClick={() => openMediaViewer({ type: 'video', src, alt })}
              style={{ maxWidth: 320, maxHeight: 240, borderRadius: 6,
                       background: '#000', verticalAlign: 'top',
